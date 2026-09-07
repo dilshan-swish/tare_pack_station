@@ -199,7 +199,88 @@ Note the connection string you'll use for this (Part 4.3):
 Server=<your-sql-server-instance>;Database=SwishWeighing;User Id=swish_api;Password=<that-password>;TrustServerCertificate=True;
 ```
 
-### 3.4 Add your real brands
+### 3.3b Bringing over your existing dev-database catalog
+
+If you've already been configuring real brands, menu items, modifiers, and
+their weights against a dev/local database, you don't need to re-enter any
+of it by hand — bring the actual rows over instead. This covers exactly
+`Brands`, `Modifiers`, `MenuItems`, `MenuItemModifiers`, and
+`ModifierCombinationWeights` (menu/modifier configuration only) — never
+`Branches` (created fresh by the Foodics sync — see 4.4), and never
+`WeighEvents`/`Devices`/anything else operational.
+
+**On your dev machine**, in SSMS: right-click your dev `SwishWeighing`
+database → **Tasks → Generate Scripts…** → Next → **"Select specific
+database objects"** → expand **Tables** and tick only:
+`dbo.Brands`, `dbo.Modifiers`, `dbo.MenuItems`, `dbo.MenuItemModifiers`,
+`dbo.ModifierCombinationWeights` — Next → on "Set Scripting Options" click
+**Advanced** → find **"Types of data to script"** and change it from
+*Schema only* to **Data only** → set an output file path → OK → Next →
+Next → Finish. SSMS writes one `.sql` file with plain `INSERT` statements,
+automatically wrapped in `SET IDENTITY_INSERT ... ON/OFF` per table — the
+exact same `BrandId`/`MenuItemId`/`ModifierId` values carry over, so every
+cross-table reference stays valid with nothing to remap.
+
+**Before importing**, run Part 1 of `docs/sql/MIGRATE_CATALOG_PREFLIGHT.sql`
+on the **production** database — it refuses to continue (with a clear error)
+if any of those five tables already has rows, which is exactly the
+situation that would otherwise cause an `IDENTITY_INSERT`/primary-key
+conflict. If it's clean, copy the exported `.sql` file to the server (USB
+drive, network share, or however you like) and run it there — in SSMS
+(open the file, Execute) or `sqlcmd -S <server> -E -C -i catalog_export.sql`.
+
+**After importing**, run Part 2 of the same script on both dev and
+production and compare the row counts — they must match exactly — then run
+Part 3, which should return **zero rows** (any row it does return means a
+reference didn't resolve, naming exactly which table/id).
+
+> If the import itself errors with a foreign-key violation, the file's
+> `INSERT` blocks landed out of dependency order (rare in a modern SSMS,
+> but simple to fix): open the file and manually move the blocks so
+> `Brands` comes first, then `Modifiers` and `MenuItems` (either order,
+> since they only depend on `Brands`), then `MenuItemModifiers` and
+> `ModifierCombinationWeights` last.
+
+**Do this instead of 3.4 below, not in addition to it** — running both
+would insert the same brands twice under different ids.
+
+**Are the weights safe after this, forever?** Yes. The automatic Foodics
+sync (4.6) only ever refreshes an item/modifier's name, category, SKU, and
+active-state when it already exists — it explicitly never touches weight
+columns (`FoodicsService.cs`: *"Refresh name/category/sku/active-state
+only — never touch configured weights."*). Once imported, these weights
+stay exactly as you set them, indefinitely, regardless of how many times
+the sync runs.
+
+### 3.3c Adding a brand LATER, after go-live
+
+Two ways to handle a brand you add after production is already running —
+pick whichever fits how you work:
+
+**Option 1 (recommended) — configure it directly in the live portal.**
+Register the brand (3.4) and its Foodics token (4.4), let the sync pull in
+its real menu automatically, then just set weights for its items in the
+production portal the same way you would have on dev — there's no dev copy
+to protect against being overwritten, so there's nothing to export. This is
+the simplest path for any brand you didn't already fully configure on your
+laptop beforehand.
+
+**Option 2 — you already configured this new brand on your dev machine
+first.** The same Generate Scripts export from 3.3b works, with two
+differences:
+- Use **PART 0** (not PART 1) of `docs/sql/MIGRATE_CATALOG_PREFLIGHT.sql`
+  as the pre-flight check — it checks that this one brand's `Code` doesn't
+  already exist, rather than requiring the whole table to be empty (which
+  would wrongly fail once production already has other brands on it).
+- SSMS's wizard exports **every row** in a selected table, not just the
+  new brand's — since your dev database now has other brands mixed in too,
+  open the generated `.sql` file afterward and delete the `INSERT`
+  statements for any brand that isn't the new one (they're grouped by
+  table, and each row's values make its `BrandId`/brand `Code` obvious) —
+  keep only the new brand's rows across all five tables before running it
+  against production.
+
+### 3.4 Add your real brands (skip if you just did 3.3b)
 
 The portal has no "create brand" button — brands are added directly in
 SQL, once each. Run (edit the list to your real brands first):
@@ -839,3 +920,58 @@ either runs the whole stack itself, or just reverse-proxies to your
 on-prem server over a VPN tunnel — a bigger topic than fits here, but worth
 knowing the constraint exists before spending hours on port forwarding that
 was never going to work.
+
+---
+
+## 12. Environment & configuration — the complete list
+
+Every value the system needs, in one place, so nothing gets missed. Each
+row links back to where it's explained in full above.
+
+### Lives on the server, as machine-level environment variables (4.3–4.4)
+
+| Variable | Value | Notes |
+|---|---|---|
+| `ConnectionStrings__Sql` | `Server=...;Database=SwishWeighing;User Id=swish_api;Password=...;TrustServerCertificate=True;` | The `swish_api` login + password from 3.3 |
+| `Api__AdminKey` | A long random string you generate | Must match exactly what you enter in the portal (5.3) |
+| `ASPNETCORE_ENVIRONMENT` | `Production` | |
+| `ASPNETCORE_URLS` | `http://+:5025` (or your chosen port) | |
+| `Foodics__Brands__0__Code`, `Foodics__Brands__0__Token` | e.g. `MM`, `<token>` | One `Code`/`Token` pair per brand — `Code` must match `Brands.Code` in the database **exactly**, or that brand's sync silently never runs |
+| `Foodics__Brands__1__Code`, `Foodics__Brands__1__Token` | (repeat per brand) | Index (`0`, `1`, `2`...) just needs to be unique, not in any order |
+| `Foodics__WebhookSecret` | leave unset | Optional — automatic sync (every 5 min) works fully without it |
+
+### Lives in `backend/SwishWeighing.Api/appsettings.Production.json` (checked into git — no secrets here)
+
+| Key | Value |
+|---|---|
+| `Cors:Origins` | `["https://your-portal-url"]` — the portal's real address |
+
+### For the portal (5.3) — pick ONE of these two, not both required
+
+| Mechanism | Where | Notes |
+|---|---|---|
+| Connection screen (per-browser) | Typed once into the portal itself | Saved in that browser's `localStorage`; re-enter on every browser/device that uses the portal |
+| `frontend/.env` at build time | `VITE_API_BASE`, `VITE_API_KEY` | Bakes the values into the built files so every browser auto-connects with no manual step. `VITE_API_KEY` must match `Api__AdminKey` exactly. Copy `frontend/.env.example`'s placeholders, never commit the real file (already gitignored) |
+
+### For each tablet (6.4) — entered on-device, not a file or env var at all
+
+| Field | Where it comes from |
+|---|---|
+| API address | Same URL as the portal connects to |
+| Device key (`XXXX-XXXX`) | Generated by the server the moment you register that tablet in the portal (6.3) — shown once, never stored anywhere by you |
+
+### In the database itself — not config, but must exist before anything works
+
+| What | How it gets there |
+|---|---|
+| `Brands` rows (Code + Name) | Either the migration in 3.3b/3.3c, or the manual insert in 3.4 |
+| Each brand's Foodics token | Matched to its `Brands.Code` via the env vars above — **the database row and the token are two separate things you must keep in sync by hand**; the token itself is never stored in the database |
+| Menu items, modifiers, weights | Migrated in 3.3b, or configured directly in the portal per-item afterward |
+
+**The one gotcha that causes silent, hard-to-notice failures**: a brand's
+`Code` in the database and its `Foodics__Brands__N__Code` env var must be
+**identical, character for character** — that's the only thing linking a
+database row to its Foodics token. Get this wrong and that one brand's
+sync simply never runs, with no error shown anywhere obvious — check the
+Windows Event Log for `FoodicsAutoSync` entries if a brand's items never
+appear.
