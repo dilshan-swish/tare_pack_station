@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI Weighing System — Project Milestones</title>
+<style>
+  @page { size: A4 landscape; margin: 11mm 10mm; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    font-family:'Calibri','Segoe UI',Arial,sans-serif;
+    color:#1a1a1a; font-size:10pt; line-height:1.4;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  h1{ font-size:19pt; margin:0 0 2px; color:#B8560F; letter-spacing:-.01em; }
+  h2{ font-size:12.5pt; margin:20px 0 7px; color:#B8560F; }
+  .sub{ color:#555; font-size:9.5pt; margin-bottom:12px; }
+  .meta-line{ font-size:9pt; color:#666; margin-top:2px; }
+
+  /* Summary + KPI boxes */
+  .grid{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:6px; }
+  .box{ border:1px solid #E4C39F; border-radius:8px; padding:11px 14px; background:#FDF6EF; flex:1; min-width:260px; }
+  .box h3{ margin:0 0 5px; font-size:9pt; text-transform:uppercase; letter-spacing:.08em; color:#B8560F; }
+  .box p{ margin:0 0 6px; font-size:9.5pt; }
+  .kpi{ background:#FFF3E6; }
+  .kpi .big{ font-size:11pt; font-weight:700; color:#1a1a1a; }
+  .pillrow{ display:flex; gap:8px; flex-wrap:wrap; margin-top:4px; }
+  .pill{ font-size:8.5pt; font-weight:700; padding:2px 9px; border-radius:999px; }
+  .pill.done{ background:#DBF0DE; color:#1C5C39; }
+  .pill.prog{ background:#FCE9CF; color:#9A5B10; }
+  .pill.todo{ background:#ECECEC; color:#555; }
+
+  .note{ font-size:8.5pt; color:#7a5; color:#8a6d3b; background:#FCF3E2; border-left:3px solid #E2A63B;
+         padding:7px 10px; border-radius:0 6px 6px 0; margin:8px 0 2px; }
+  .caption{ font-size:8pt; color:#777; margin:0 0 6px; font-style:italic; }
+
+  table{ border-collapse:collapse; width:100%; }
+  /* ---- Template A (clean orange/peach) ---- */
+  .tplA{ font-size:9pt; }
+  .tplA th{ background:#E2711D; color:#fff; font-weight:700; text-align:left; padding:7px 8px;
+            border:1px solid #fff; font-size:8.5pt; white-space:nowrap; }
+  .tplA td{ padding:6px 8px; border:1px solid #F3D9BE; vertical-align:top; }
+  .tplA tbody tr:nth-child(odd){ background:#FDEEE0; }
+  .tplA tbody tr:nth-child(even){ background:#FBE0CC; }
+  .tplA .id{ color:#B8560F; font-weight:700; white-space:nowrap; }
+  .tplA .num{ text-align:center; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .st-done{ color:#1C5C39; font-weight:700; }
+  .st-prog{ color:#9A5B10; font-weight:700; }
+  .st-todo{ color:#666; font-weight:700; }
+
+  /* ---- Template B (detailed tracker) ---- */
+  .tplB{ font-size:7pt; line-height:1.25; table-layout:fixed; }
+  .tplB th{ background:#3F5D74; color:#fff; font-weight:700; text-align:left; padding:4px 4px;
+            border:.5px solid #fff; font-size:6.5pt; text-transform:uppercase; letter-spacing:.02em; }
+  .tplB td{ padding:3px 4px; border:.5px solid #C9D3DB; vertical-align:top; word-wrap:break-word; }
+  .tplB tbody tr:nth-child(even){ background:#F2F5F8; }
+  .tplB .num{ text-align:center; font-variant-numeric:tabular-nums; }
+  .tplB .cmp{ color:#1C5C39; font-weight:700; }
+  .tplB .prg{ color:#9A5B10; font-weight:700; }
+  .tplB .ns{ color:#666; font-weight:700; }
+  .neg{ color:#8A2F1F; } .pos{ color:#1C5C39; }
+  .pagebreak{ page-break-before: always; }
+  .foot{ margin-top:10px; font-size:8pt; color:#888; text-align:center; }
+</style>
+</head>
+<body>
+
+  <h1>AI Weighing System — Project Milestones</h1>
+  <div class="sub">SWiSH · Pack-Station Weight-Check &nbsp;|&nbsp; Pilot: BBT Um Al Haiman &nbsp;|&nbsp; Plan window: 07-Jul-2026 → 30-Sep-2026</div>
+
+  <div class="grid">
+    <div class="box kpi">
+      <h3>Target KPI</h3>
+      <p class="big">AI Weighing System rolled out to <u>15 branches</u> with a <u>25% reduction in missing orders/items</u>, confirmed against the baseline documented on day one.</p>
+    </div>
+    <div class="box">
+      <h3>Current status &nbsp;·&nbsp; ~45% overall</h3>
+      <p>The <b>software is complete and deployed to the test tablet</b>: pack-station app, live Foodics integration (all brands), the AI missing/extra/wrong-order detection model, and the BBT weight standards (Ideal + Min/Max). The scale integration is <b>fully specified</b> (Mettler-Toledo Ariva-S-Mini).</p>
+      <p>The critical path is now <b>hardware procurement</b> — the scale is being sourced (~2.5–3 weeks). The first live-scale pilot at BBT Um Al Haiman follows immediately, then rollout to 15 branches and KPI validation by 30-Sep-2026.</p>
+      <div class="pillrow">
+        <span class="pill done">7 Completed</span>
+        <span class="pill prog">2 In progress</span>
+        <span class="pill todo">7 Not started</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="note"><b>Key dependency / risk:</b> scale procurement lead time drives the whole schedule, and the day-one baseline (AIWS-08) must be captured before the pilot for the 25% KPI to be measurable. The 15-branch rollout + KPI confirmation window to 30-Sep is tight and assumes the first scale arrives on time.</div>
+
+  <h2>Template A — Milestone Summary</h2>
+  <table class="tplA">
+    <thead>
+      <tr>
+        <th>Milestone ID</th><th>Milestone</th><th>Owner</th><th>Team</th><th>Status</th>
+        <th>Priority</th><th>Start Date</th><th>End Date</th><th>Duration</th><th>Dependency</th><th>Progress %</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="id">AIWS-01</td><td>Define scope, KPI &amp; pilot branch</td><td>Mohamed Elsayed</td><td>Business Excellence</td><td class="st-done">Completed</td><td>High</td><td class="num">07/07/2026</td><td class="num">09/07/2026</td><td class="num">2</td><td>—</td><td class="num">100</td></tr>
+      <tr><td class="id">AIWS-02</td><td>Build pack-station weigh-check app</td><td>Ameer</td><td>IT</td><td class="st-done">Completed</td><td>High</td><td class="num">07/07/2026</td><td class="num">18/07/2026</td><td class="num">11</td><td>AIWS-01</td><td class="num">100</td></tr>
+      <tr><td class="id">AIWS-03</td><td>Integrate Foodics POS (live orders)</td><td>Ameer</td><td>Integration</td><td class="st-done">Completed</td><td>High</td><td class="num">14/07/2026</td><td class="num">20/07/2026</td><td class="num">6</td><td>AIWS-02</td><td class="num">100</td></tr>
+      <tr><td class="id">AIWS-04</td><td>Train &amp; embed AI detection model</td><td>Ameer</td><td>IT</td><td class="st-done">Completed</td><td>High</td><td class="num">16/07/2026</td><td class="num">21/07/2026</td><td class="num">5</td><td>AIWS-02</td><td class="num">100</td></tr>
+      <tr><td class="id">AIWS-05</td><td>Load BBT weight standards (Min/Max)</td><td>Ragab</td><td>Cost Control</td><td class="st-done">Completed</td><td>High</td><td class="num">20/07/2026</td><td class="num">24/07/2026</td><td class="num">4</td><td>AIWS-03</td><td class="num">100</td></tr>
+      <tr><td class="id">AIWS-06</td><td>Finalize scale integration design</td><td>Ameer</td><td>IT</td><td class="st-done">Completed</td><td>High</td><td class="num">21/07/2026</td><td class="num">24/07/2026</td><td class="num">3</td><td>AIWS-01</td><td class="num">100</td></tr>
+      <tr><td class="id">AIWS-07</td><td>Deploy app to test tablet</td><td>Ameer</td><td>IT</td><td class="st-done">Completed</td><td>High</td><td class="num">24/07/2026</td><td class="num">25/07/2026</td><td class="num">1</td><td>AIWS-02</td><td class="num">100</td></tr>
+      <tr><td class="id">AIWS-08</td><td>Document Day-One missing-items baseline</td><td>Thalbish</td><td>Data / BI</td><td class="st-prog">Started</td><td>High</td><td class="num">28/07/2026</td><td class="num">02/08/2026</td><td class="num">5</td><td>AIWS-03</td><td class="num">10</td></tr>
+      <tr><td class="id">AIWS-09</td><td>Procure scale &amp; cabling</td><td>Nader</td><td>Procurement</td><td class="st-prog">Started</td><td>High</td><td class="num">28/07/2026</td><td class="num">14/08/2026</td><td class="num">17</td><td>AIWS-06</td><td class="num">20</td></tr>
+      <tr><td class="id">AIWS-10</td><td>Hardware bring-up &amp; driver validation</td><td>Ameer</td><td>IT</td><td class="st-todo">Not Started</td><td>High</td><td class="num">14/08/2026</td><td class="num">20/08/2026</td><td class="num">6</td><td>AIWS-09</td><td class="num">0</td></tr>
+      <tr><td class="id">AIWS-11</td><td>On-site accuracy validation</td><td>Ameer / Wael</td><td>IT / Ops</td><td class="st-todo">Not Started</td><td>High</td><td class="num">20/08/2026</td><td class="num">24/08/2026</td><td class="num">4</td><td>AIWS-10, AIWS-05</td><td class="num">0</td></tr>
+      <tr><td class="id">AIWS-12</td><td>Live pilot — BBT Um Al Haiman</td><td>Wael</td><td>Operations</td><td class="st-todo">Not Started</td><td>High</td><td class="num">24/08/2026</td><td class="num">07/09/2026</td><td class="num">14</td><td>AIWS-11</td><td class="num">0</td></tr>
+      <tr><td class="id">AIWS-13</td><td>Measure pilot vs baseline &amp; sign-off</td><td>Thalbish</td><td>Data / BI</td><td class="st-todo">Not Started</td><td>High</td><td class="num">07/09/2026</td><td class="num">12/09/2026</td><td class="num">5</td><td>AIWS-12, AIWS-08</td><td class="num">0</td></tr>
+      <tr><td class="id">AIWS-14</td><td>Roll out to 15 branches</td><td>Operations Team</td><td>Operations</td><td class="st-todo">Not Started</td><td>High</td><td class="num">12/09/2026</td><td class="num">26/09/2026</td><td class="num">14</td><td>AIWS-13</td><td class="num">0</td></tr>
+      <tr><td class="id">AIWS-15</td><td>Confirm KPI — 25% cut, 15 branches</td><td>Thalbish</td><td>Data / BI</td><td class="st-todo">Not Started</td><td>High</td><td class="num">26/09/2026</td><td class="num">30/09/2026</td><td class="num">4</td><td>AIWS-14</td><td class="num">0</td></tr>
+      <tr><td class="id">AIWS-16</td><td>Project closeout &amp; SOP handover</td><td>Ameer</td><td>IT</td><td class="st-todo">Not Started</td><td>Medium</td><td class="num">30/09/2026</td><td class="num">30/09/2026</td><td class="num">0</td><td>AIWS-15</td><td class="num">0</td></tr>
+    </tbody>
+  </table>
+
+  <div class="pagebreak"></div>
+  <h2>Template B — Milestones Tracker (rows to paste into the master tracker)</h2>
+  <div class="caption">Columns follow the master Milestones Tracker so rows paste in directly. Days-to-Deadline shown vs today = 28-Jul-2026; in the live sheet it and the flag/risk columns auto-calculate. Each milestone has one responsible owner; update status, % complete and last-update within 24 h of a real change.</div>
+  <table class="tplB">
+    <colgroup>
+      <col style="width:6%"><col style="width:6%"><col style="width:4.5%"><col style="width:19%">
+      <col style="width:6.5%"><col style="width:6%"><col style="width:5%">
+      <col style="width:4.5%"><col style="width:4.5%"><col style="width:3.5%"><col style="width:5%">
+      <col style="width:3%"><col style="width:4.5%"><col style="width:12%"><col style="width:4.5%"><col style="width:5%">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>Project</th><th>Phase</th><th>ID</th><th>Milestone Description</th><th>Resp. Dept</th><th>Owner</th><th>Escalate To</th>
+        <th>Orig. Deadline</th><th>Current Deadline</th><th>Days</th><th>Status</th><th>%</th><th>Last Update</th><th>Update Comment</th><th>Dep. Type</th><th>Auto Risk</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>AI Weighing System</td><td>Definition</td><td>AIWS-01</td><td>Define project scope, success KPI (15 branches; 25% reduction in missing orders/items vs day-one baseline) and pilot boundary (BBT Um Al Haiman).</td><td>Business Excellence</td><td>Mohamed Elsayed</td><td>Abdulwahab Boodai</td><td class="num">07-Jul-26</td><td class="num">09-Jul-26</td><td class="num neg">-19</td><td class="cmp">Completed</td><td class="num">100</td><td class="num">09-Jul-26</td><td>Scope, KPI and pilot branch confirmed.</td><td>Internal</td><td class="cmp">Completed</td></tr>
+      <tr><td>AI Weighing System</td><td>Build</td><td>AIWS-02</td><td>Develop the tablet weight-check application — orders queue, weigh-check screen, settings — on a swappable weight-source architecture (manual mode active).</td><td>IT</td><td>Ameer</td><td>Fawzan</td><td class="num">07-Jul-26</td><td class="num">18-Jul-26</td><td class="num neg">-10</td><td class="cmp">Completed</td><td class="num">100</td><td class="num">18-Jul-26</td><td>App built and running on the tablet.</td><td>Internal</td><td class="cmp">Completed</td></tr>
+      <tr><td>AI Weighing System</td><td>Build</td><td>AIWS-03</td><td>Integrate Foodics POS — live orders per brand (9 brands), branch selection, menu sync and 10-second auto-refresh.</td><td>IT</td><td>Ameer</td><td>Fawzan</td><td class="num">14-Jul-26</td><td class="num">20-Jul-26</td><td class="num neg">-8</td><td class="cmp">Completed</td><td class="num">100</td><td class="num">20-Jul-26</td><td>Live orders verified against the Foodics API.</td><td>External</td><td class="cmp">Completed</td></tr>
+      <tr><td>AI Weighing System</td><td>Build</td><td>AIWS-04</td><td>Train and embed the on-device AI model that flags likely missing / extra items and wrong-order mix-ups on off-weight orders.</td><td>IT</td><td>Ameer</td><td>Fawzan</td><td class="num">16-Jul-26</td><td class="num">21-Jul-26</td><td class="num neg">-7</td><td class="cmp">Completed</td><td class="num">100</td><td class="num">21-Jul-26</td><td>Model trained; metrics saved; integrated in app.</td><td>Internal</td><td class="cmp">Completed</td></tr>
+      <tr><td>AI Weighing System</td><td>Data Collection</td><td>AIWS-05</td><td>Integrate BBT finalized Product Weight Standards (Ideal + Min/Max range) and modifiers into the app.</td><td>Cost Control</td><td>Ragab</td><td>Abdulwahab Boodai</td><td class="num">20-Jul-26</td><td class="num">24-Jul-26</td><td class="num neg">-4</td><td class="cmp">Completed</td><td class="num">100</td><td class="num">24-Jul-26</td><td>113 items matched &amp; applied; balance flagged for manual entry.</td><td>Cross-Department</td><td class="cmp">Completed</td></tr>
+      <tr><td>AI Weighing System</td><td>Design</td><td>AIWS-06</td><td>Finalize scale hardware design — Mettler-Toledo Ariva-S-Mini, USB cabling and 8217 protocol; produce integration guide &amp; BOM.</td><td>IT</td><td>Ameer</td><td>Fawzan</td><td class="num">21-Jul-26</td><td class="num">24-Jul-26</td><td class="num neg">-4</td><td class="cmp">Completed</td><td class="num">100</td><td class="num">24-Jul-26</td><td>Spec, wiring and bill of materials documented.</td><td>Internal</td><td class="cmp">Completed</td></tr>
+      <tr><td>AI Weighing System</td><td>Pilot</td><td>AIWS-07</td><td>Deploy the Android build to the pack-station test tablet for internal validation in manual mode.</td><td>IT</td><td>Ameer</td><td>Fawzan</td><td class="num">24-Jul-26</td><td class="num">25-Jul-26</td><td class="num neg">-3</td><td class="cmp">Completed</td><td class="num">100</td><td class="num">25-Jul-26</td><td>APK installed on SM-X115; all screens validated.</td><td>Internal</td><td class="cmp">Completed</td></tr>
+      <tr><td>AI Weighing System</td><td>Data Collection</td><td>AIWS-08</td><td>Document the day-one baseline of missing orders/items at the pilot branch from Foodics + complaint data — the reference for the 25% KPI.</td><td>Data / BI</td><td>Thalbish</td><td>Abdulwahab Boodai</td><td class="num">28-Jul-26</td><td class="num">02-Aug-26</td><td class="num pos">+5</td><td class="prg">Started</td><td class="num">10</td><td class="num">28-Jul-26</td><td>Baseline extract from Foodics / complaints in progress.</td><td>Cross-Department</td><td class="prg">On Track</td></tr>
+      <tr><td>AI Weighing System</td><td>Rollout</td><td>AIWS-09</td><td>Procure the scale and cabling (Ariva-S-Mini, RJ50→USB cable, USB-C OTG/PD hub). Procurement lead time is the project critical path.</td><td>Procurement</td><td>Nader</td><td>Abdulwahab Boodai</td><td class="num">28-Jul-26</td><td class="num">14-Aug-26</td><td class="num pos">+17</td><td class="prg">Started</td><td class="num">20</td><td class="num">28-Jul-26</td><td>Spec finalized; sourcing the scale (~2.5–3 weeks lead time).</td><td>External</td><td class="prg">On Track</td></tr>
+      <tr><td>AI Weighing System</td><td>Build</td><td>AIWS-10</td><td>Connect the scale, finalize and validate the serial (8217) driver against the live device; confirm accurate live weight readings.</td><td>IT</td><td>Ameer</td><td>Fawzan</td><td class="num">14-Aug-26</td><td class="num">20-Aug-26</td><td class="num pos">+23</td><td class="ns">Not Started</td><td class="num">0</td><td class="num">—</td><td>Depends on scale delivery (AIWS-09).</td><td>Internal</td><td class="prg">On Track</td></tr>
+      <tr><td>AI Weighing System</td><td>Validation</td><td>AIWS-11</td><td>On-site validation at the pilot branch — known-weight tests, tune item Min/Max ranges and tolerances.</td><td>IT / Operations</td><td>Ameer / Wael</td><td>Fawzan</td><td class="num">20-Aug-26</td><td class="num">24-Aug-26</td><td class="num pos">+27</td><td class="ns">Not Started</td><td class="num">0</td><td class="num">—</td><td>—</td><td>Cross-Department</td><td class="prg">On Track</td></tr>
+      <tr><td>AI Weighing System</td><td>Pilot</td><td>AIWS-12</td><td>Run the live weight-check pilot with staff at BBT Um Al Haiman on the physical scale.</td><td>Operations</td><td>Wael</td><td>Abdulwahab Boodai</td><td class="num">24-Aug-26</td><td class="num">07-Sep-26</td><td class="num pos">+41</td><td class="ns">Not Started</td><td class="num">0</td><td class="num">—</td><td>—</td><td>Cross-Department</td><td class="prg">On Track</td></tr>
+      <tr><td>AI Weighing System</td><td>Analysis</td><td>AIWS-13</td><td>Measure the pilot's missing-item reduction against the day-one baseline; tune and obtain pilot sign-off.</td><td>Data / BI</td><td>Thalbish</td><td>Abdulwahab Boodai</td><td class="num">07-Sep-26</td><td class="num">12-Sep-26</td><td class="num pos">+45</td><td class="ns">Not Started</td><td class="num">0</td><td class="num">—</td><td>Needs baseline (AIWS-08) + pilot data (AIWS-12).</td><td>Cross-Department</td><td class="prg">On Track</td></tr>
+      <tr><td>AI Weighing System</td><td>Rollout</td><td>AIWS-14</td><td>Roll out the AI Weighing System across branches to reach the 15-branch KPI target (hardware, install, staff briefing).</td><td>Operations</td><td>Operations Team</td><td>Abdulwahab Boodai</td><td class="num">12-Sep-26</td><td class="num">26-Sep-26</td><td class="num pos">+60</td><td class="ns">Not Started</td><td class="num">0</td><td class="num">—</td><td>Requires additional scales per branch.</td><td>Cross-Department</td><td class="prg">On Track</td></tr>
+      <tr><td>AI Weighing System</td><td>Validation</td><td>AIWS-15</td><td>Confirm the KPI — 25% reduction in missing orders/items across 15 branches vs the day-one baseline.</td><td>Data / BI</td><td>Thalbish</td><td>Abdulwahab Boodai</td><td class="num">26-Sep-26</td><td class="num">30-Sep-26</td><td class="num pos">+64</td><td class="ns">Not Started</td><td class="num">0</td><td class="num">—</td><td>KPI acceptance gate.</td><td>Cross-Department</td><td class="prg">On Track</td></tr>
+      <tr><td>AI Weighing System</td><td>Closeout</td><td>AIWS-16</td><td>Project closeout — SOP handover, monitoring ownership and open-item register.</td><td>IT / Operations</td><td>Ameer</td><td>Abdulwahab Boodai</td><td class="num">30-Sep-26</td><td class="num">30-Sep-26</td><td class="num pos">+64</td><td class="ns">Not Started</td><td class="num">0</td><td class="num">—</td><td>—</td><td>Cross-Department</td><td class="prg">On Track</td></tr>
+    </tbody>
+  </table>
+
+  <div class="foot">SWiSH · AI Weighing System — 16 milestones · 7 completed, 2 in progress, 7 not started · target completion 30-Sep-2026</div>
+</body>
+</html>

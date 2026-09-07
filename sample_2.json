@@ -1,0 +1,68 @@
+{
+  "id": "d18e81e1-c7a7-4ed5-a407-a026261cc669",
+  "number": 77,
+  "type": 3,
+  "source": 2,
+  "status": 2,
+  "delivery_status": 1,
+  "reference": 795670,
+  "check_number": 177696,
+
+  "opened_at": "2026-08-11 09:03:14",
+  "accepted_at": "2026-08-11 09:03:17",
+  "due_at": null,
+  "driver_assigned_at": null,
+  "dispatched_at": null,
+  "driver_collected_at": null,
+  "delivered_at": null,
+  "closed_at": null,
+  "created_at": "2026-08-11 09:03:14",
+  "updated_at": "2026-08-11 09:04:10",
+
+  "kitchen_notes": "external_number : BBT - Keeta 2.0: 4884143225847115 \n ~_Need cutlery~_",
+
+  "meta": {
+    "foodics": {
+      "device_id": "a0005bb5-faa7-432e-a59e-13cf38c351a5",
+      "accepted_by": 1,
+      "auto_accept": true,
+      "auto_closed": false,
+      "cashier_received_at": "2026-08-11 09:03:17",
+      "kitchen_received_at": "2026-08-11 09:03:18"
+    },
+    "external_number": "BBT - Keeta 2.0: 4884143225847115",
+    "external_source": "Keeta 2.0",
+    "external_order_source": "foodics_kiosk"
+  },
+
+  "customer": {
+    "id": "a279c62a-3567-461a-bf29-c99bcdea6064",
+    "name": "Keeta 2.0",
+    "phone": "22018233",
+    "order_count": 0,
+    "last_order_at": null
+  },
+
+  "products": [
+    {
+      "id": "a279c62a-66f5-4d13-8816-abc697773d47",
+      "quantity": 2,
+      "unit_price": 2,
+      "total_price": 4,
+      "status": 2,
+      "added_at": "2026-08-11 09:03:14",
+      "product": {
+        "id": "a172218d-93bd-476b-946e-5bc0fe896bb9",
+        "sku": "BB8300110",
+        "name": "Toasts Duo Combo",
+        "price": 2
+      },
+      "options": [
+        { "modifier_option": { "id": "a259ab5d-a8e6-488b-960e-00ab0c0b8a2a", "name": "ORIGINAL", "price": 0 } },
+        { "modifier_option": { "id": "a259ab5d-c034-4cfa-a963-4adcbac4b05c", "name": "Not So Curly Fries", "price": 0 } },
+        { "modifier_option": { "id": "a259ab5d-ccfd-4ea6-a0fd-b8760b9a34ae", "name": "SALT", "price": 0 } },
+        { "modifier_option": { "id": "a259ab5e-04c4-4823-a810-51b68c54ed59", "name": "KINZA COLA", "price": 0 } }
+      ]
+    }
+  ]
+}

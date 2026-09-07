@@ -1,0 +1,6 @@
+@SwishWeighing.Api_HostAddress = http://localhost:5025
+
+GET {{SwishWeighing.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

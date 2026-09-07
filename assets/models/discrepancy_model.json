@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "trainedAt": "2026-07-22T10:12:55.752323Z",
+  "priorMissingItem": 1.3853926036134756,
+  "priorMissingModifier": 0.9714936298193377,
+  "priorExtraItem": 0.7125566569558108,
+  "priorExtraModifier": 1.0348865357196597,
+  "priorWrongOrder": 1.4617843098817298,
+  "priorNaturalVariation": 0.8873489163162314,
+  "scaleNoiseGrams": 4.830284315678594,
+  "confidenceTemperature": 0.8992820537175259,
+  "minConfidenceToShow": 0.24161495442584313,
+  "wrongOrderMarginGrams": 9.555896566863478,
+  "maxSuggestions": 3
+}

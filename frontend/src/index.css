@@ -1,0 +1,206 @@
+@import "tailwindcss";
+
+/* Clean, light admin theme carrying the SWiSH brand accents. */
+@theme {
+  --color-green: #2f8f5b;
+  --color-green-dark: #256b45;
+  --color-cream: #f6f1e3;
+  --color-ink: #17211b;
+  --color-muted: #5c6b62;
+  --color-amber: #f3a93b;
+  --color-coral: #e8604c;
+  --color-okbg: #e7f6ee;
+  --color-oktext: #1c5c39;
+  --color-warnbg: #fdefd6;
+  --color-badbg: #fde4df;
+  --color-badtext: #a5341f;
+  --color-line: #e7e9e5;
+  --color-page: #f5f7f4;
+
+  --font-display: "Archivo Black", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-page);
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pop {
+  0% {
+    transform: scale(0.85);
+  }
+  60% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes turnPopIn {
+  0% {
+    opacity: 0;
+    transform: perspective(1200px) rotateX(-20deg) scale(0.9) translateY(14px);
+  }
+  55% {
+    opacity: 1;
+    transform: perspective(1200px) rotateX(3deg) scale(1.015) translateY(-2px);
+  }
+  100% {
+    opacity: 1;
+    transform: perspective(1200px) rotateX(0deg) scale(1) translateY(0);
+  }
+}
+@keyframes pulseRing {
+  0% {
+    box-shadow: 0 0 0 0 rgba(47, 143, 91, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 7px rgba(47, 143, 91, 0);
+  }
+}
+@keyframes shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@utility animate-fade-up {
+  animation: fadeUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility animate-pop-in {
+  /* Quick, subtle entrance for small transient overlays (dropdown panels,
+     inline editors) — animate-fade-up's 10px slide reads as too floaty at
+     this size. */
+  animation: popIn 0.12s ease-out both;
+}
+@utility animate-turn-pop-in {
+  /* A heavier entrance than animate-pop-in — a 3D "turn" into place with a
+     slight overshoot settle — reserved for a moment worth more presence
+     (e.g. revealing a full order breakdown), not routine dialogs. */
+  animation: turnPopIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-style: preserve-3d;
+}
+@utility animate-pop {
+  animation: pop 0.3s ease both;
+}
+@utility card-shadow {
+  box-shadow: 0 1px 2px rgba(23, 33, 27, 0.06), 0 1px 3px rgba(23, 33, 27, 0.04);
+}
+@utility card-shadow-hover {
+  box-shadow: 0 10px 30px rgba(23, 33, 27, 0.1);
+}
+@utility status-pulse {
+  /* A soft, looping "breathing" ring — used only on a live/online status
+     dot, never on anything decorative, so it stays a meaningful signal. */
+  animation: pulseRing 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@utility animate-breathe {
+  /* A slow, idle "alive" pulse — reserved for a resting AI-assistant icon,
+     never anything that could read as a status indicator. */
+  animation: breathe 2.6s ease-in-out infinite;
+}
+@utility animate-slide-up-fade {
+  /* A slightly heavier entrance than fade-up, for a whole page/section
+     transition rather than a small in-place element. */
+  animation: slideUpFade 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility animate-slide-in-right {
+  /* The mobile nav drawer's own entrance — a real off-canvas panel slide,
+     distinct from the pop/fade family used by dropdowns and dialogs. */
+  animation: slideInRight 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@utility animate-shimmer {
+  background: linear-gradient(
+    100deg,
+    var(--color-line) 30%,
+    #f3f4f1 50%,
+    var(--color-line) 70%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

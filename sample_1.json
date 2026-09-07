@@ -1,0 +1,92 @@
+{
+  "id": "0b97343c-4ee9-4ad0-84cc-f5f96aebb93b",
+  "app_id": "937978a1-225e-46d9-b07b-130bfad422df",
+  "promotion_id": null,
+  "discount_type": null,
+  "reference_x": null,
+  "number": 38,
+  "type": 3,
+  "source": 2,
+  "status": 2,
+  "delivery_status": 1,
+  "guests": 1,
+  "kitchen_notes": ".بدون أدوات المائدة",
+  "customer_notes": "external_number : Mishmash - Talabat: 3817476597, #5112 \n .بدون أدوات المائدة",
+  "business_date": null,
+  "subtotal_price": 3.5,
+  "discount_amount": 0,
+  "rounding_amount": 0,
+  "total_price": 3.5,
+  "tax_exclusive_discount_amount": 0,
+  "delay_in_seconds": null,
+
+  "opened_at": "2026-08-11 08:18:43",
+  "accepted_at": "2026-08-11 08:18:46",
+  "due_at": null,
+  "driver_assigned_at": null,
+  "dispatched_at": null,
+  "driver_collected_at": null,
+  "delivered_at": null,
+  "closed_at": null,
+  "created_at": "2026-08-11 08:18:44",
+  "updated_at": "2026-08-11 08:18:57",
+
+  "reference": 522234,
+  "check_number": 157408,
+
+  "meta": {
+    "foodics": {
+      "device_id": "a0004820-2c20-41f8-ac68-24e11dc37b11",
+      "accepted_by": 1,
+      "auto_accept": true,
+      "auto_closed": false,
+      "cashier_received_at": "2026-08-11 08:18:46",
+      "kitchen_received_at": "2026-08-11 08:18:50"
+    },
+    "external_number": "Mishmash - Talabat: 3817476597, #5112",
+    "external_source": "Talabat"
+  },
+
+  "customer": {
+    "id": "a1422f99-17f2-46df-970f-a96652bcdfd6",
+    "name": "Talabat Co",
+    "dial_code": 965,
+    "phone": "22015050",
+    "order_count": 280362,
+    "last_order_at": "2026-08-11 07:54:02"
+    /* ...email/gender/birth_date/blacklist/loyalty fields, mostly null for aggregator "customers" */
+  },
+
+  "products": [
+    {
+      "id": "a279b640-2804-4e23-8384-1e3f6a251c12",
+      "quantity": 1,
+      "unit_price": 3.5,
+      "total_price": 3.5,
+      "status": 2,
+      "added_at": "2026-08-11 08:18:43",
+      "closed_at": null,
+      "product": {
+        "id": "a1f727a5-1d63-45a6-94a5-4118ea3e2180",
+        "sku": "MM3000642",
+        "name": "Tenders & Toasted Combo",
+        "price": 3.5
+        /* ...description, image, calories, etc. */
+      },
+      "options": [
+        {
+          "id": "a279b654-6b2e-4e62-b80f-cbc4f7b38945",
+          "quantity": 1,
+          "unit_price": 0,
+          "added_at": "2026-08-11 08:18:43",
+          "modifier_option": {
+            "id": "a1f74699-699e-4ccf-9955-936189d9182b",
+            "name": "Tenders Texas Toast",
+            "price": 0
+          }
+        }
+        /* ...one more option entry, same shape */
+      ]
+    }
+  ]
+}

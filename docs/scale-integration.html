@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TARE — Ariva Scale Integration Guide</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+  :root{
+    --green:#2F8F5B; --green-dark:#256B45; --cream:#F6F1E3; --ink:#161B14;
+    --coral:#E8604C; --amber:#F3A93B; --ok-bg:#DFF2E6; --ok-tx:#1C5C39;
+    --under-bg:#FBE1DC; --under-tx:#8A2F1F; --white:#fff;
+    --shadow:7px 7px 0 rgba(22,27,20,.9);
+    --shadow-sm:4px 4px 0 rgba(22,27,20,.9);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--green); color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif; font-size:11pt; line-height:1.55;
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  .page{max-width:820px;margin:0 auto;padding:28px 24px 60px;}
+  h1,h2,h3{font-family:'Archivo Black',sans-serif;font-weight:400;letter-spacing:-.01em;text-wrap:balance;line-height:1.05;}
+  h1{font-size:30pt;color:var(--cream);margin:0;}
+  h2{font-size:16pt;margin:0 0 2px;}
+  h3{font-size:11.5pt;margin:0 0 6px;}
+  p{margin:0 0 9px;}
+  .mono{font-family:'Space Mono',monospace;}
+  code{font-family:'Space Mono',monospace;background:rgba(22,27,20,.08);padding:1px 5px;border-radius:5px;font-size:.92em;}
+  a{color:var(--ink);}
+
+  /* Header */
+  .masthead{display:flex;align-items:flex-end;justify-content:space-between;gap:18px;margin-bottom:20px;flex-wrap:wrap;}
+  .wordmark{font-family:'Archivo Black',sans-serif;font-size:30pt;color:var(--ink);background:var(--cream);
+    border:2.5px solid var(--ink);border-radius:14px;box-shadow:var(--shadow-sm);padding:2px 16px 6px;line-height:1;}
+  .wordmark .dot{color:var(--amber);}
+  .subtitle{color:var(--cream);font-weight:600;font-size:11.5pt;max-width:420px;}
+  .subtitle .lead{display:block;font-size:9pt;letter-spacing:.14em;text-transform:uppercase;opacity:.8;margin-bottom:3px;}
+
+  /* Cards */
+  .card{background:var(--cream);border:2.5px solid var(--ink);border-radius:20px;box-shadow:var(--shadow);
+    padding:22px 24px;margin-bottom:26px;break-inside:avoid;}
+  .card.tight{padding:18px 20px;}
+  .eyebrow{font-family:'Space Mono',monospace;font-weight:700;font-size:8.5pt;letter-spacing:.16em;
+    text-transform:uppercase;color:var(--green-dark);margin-bottom:8px;}
+
+  /* Callout */
+  .callout{background:var(--amber);border:2.5px solid var(--ink);border-radius:16px;box-shadow:var(--shadow-sm);
+    padding:16px 20px;margin-bottom:26px;break-inside:avoid;}
+  .callout h3{margin-bottom:6px;}
+  .callout ol{margin:0;padding-left:20px;}
+  .callout li{margin-bottom:4px;font-weight:600;}
+
+  /* Tables */
+  table{width:100%;border-collapse:collapse;margin:6px 0 2px;font-size:10pt;}
+  th,td{text-align:left;padding:8px 10px;border:1.5px solid var(--ink);vertical-align:top;}
+  th{background:var(--ink);color:var(--cream);font-family:'Space Mono',monospace;font-size:8.5pt;
+    letter-spacing:.08em;text-transform:uppercase;}
+  tbody tr:nth-child(even){background:rgba(22,27,20,.05);}
+  td .mono,td.mono{font-size:9.5pt;}
+  .num{font-variant-numeric:tabular-nums;}
+
+  .pill{display:inline-block;border:2px solid var(--ink);border-radius:999px;padding:1px 10px;font-size:8.5pt;
+    font-weight:700;font-family:'Space Mono',monospace;}
+  .pill.ok{background:var(--ok-bg);color:var(--ok-tx);}
+  .pill.warn{background:var(--amber);}
+  .pill.danger{background:var(--under-bg);color:var(--under-tx);}
+
+  ul.clean{margin:4px 0 0;padding-left:18px;}
+  ul.clean li{margin-bottom:5px;}
+
+  /* Diagram */
+  .diagram{display:flex;flex-direction:column;gap:14px;}
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:nowrap;}
+  .node{flex:1;background:var(--white);border:2.5px solid var(--ink);border-radius:14px;box-shadow:var(--shadow-sm);
+    padding:12px;text-align:center;min-width:0;}
+  .node .k{font-family:'Space Mono',monospace;font-size:8pt;letter-spacing:.1em;text-transform:uppercase;color:var(--green-dark);}
+  .node .t{font-family:'Archivo Black',sans-serif;font-size:10.5pt;margin:3px 0;}
+  .node .s{font-size:8.5pt;line-height:1.3;color:rgba(22,27,20,.72);}
+  .arrow{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:0 6px;min-width:96px;}
+  .arrow .lab{font-family:'Space Mono',monospace;font-size:7.5pt;text-align:center;line-height:1.25;margin-bottom:2px;color:var(--ink);}
+  .arrow .line{font-size:20pt;line-height:1;color:var(--ink);}
+  .power-row{display:flex;gap:12px;flex-wrap:wrap;}
+  .power-row .pnode{flex:1;min-width:180px;background:var(--ok-bg);border:2px solid var(--ink);border-radius:12px;padding:9px 12px;font-size:9pt;}
+  .power-row .pnode b{font-family:'Space Mono',monospace;}
+
+  .footnote{color:var(--cream);font-size:9pt;text-align:center;opacity:.85;margin-top:8px;}
+  .kicker{color:var(--cream);font-weight:700;margin:28px 0 10px;font-size:9pt;letter-spacing:.16em;text-transform:uppercase;}
+  @page{size:A4;margin:12mm;}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="masthead">
+    <div>
+      <div class="wordmark">SW<span class="dot">i</span>SH</div>
+    </div>
+    <div class="subtitle">
+      <span class="lead">Hardware integration guide</span>
+      Connecting a Mettler-Toledo <b>Ariva-S-Mini (1070)</b> checkout scale to the TARE pack-station tablet.
+    </div>
+  </div>
+
+  <h1 style="margin-bottom:18px;">Ariva Scale → TARE Tablet</h1>
+
+  <!-- SHORT VERSION -->
+  <div class="callout">
+    <h3>The short version</h3>
+    <ol>
+      <li>Power the scale from its own <b>12&nbsp;V wall adapter</b> (it is <u>not</u> USB-powered).</li>
+      <li>Run the scale's <b>RJ50→USB cable (#72256236)</b> into a <b>USB-C OTG hub</b>, then into the tablet's USB-C port.</li>
+      <li>On the scale, set <b>Comm Type = USB Virtual COM</b> and <b>Protocol = 8217 Mettler-Toledo</b>.</li>
+      <li>In the app, <b>Settings → Weight source → Serial (Streaming)</b> and match the serial values.</li>
+      <li>Place a weight — it flows into the shared scale reading and every order checks live.</li>
+    </ol>
+  </div>
+
+  <!-- WHAT TO BUY -->
+  <div class="card">
+    <div class="eyebrow">Bill of materials</div>
+    <h2>What you need to buy</h2>
+    <p>One-station shopping list. Quantities are per pack station.</p>
+    <table>
+      <thead>
+        <tr><th style="width:26%">Item</th><th style="width:20%">Part / spec</th><th>Why you need it</th><th style="width:8%">Qty</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Ariva-S-Mini scale</b><br>(stand-alone)</td>
+          <td class="mono">Model 1070<br>weight-only ok</td>
+          <td>The scale itself. Weight-only version is enough for a pack-station weight check.</td>
+          <td class="num">1</td>
+        </tr>
+        <tr>
+          <td><b>12&nbsp;V wall-plug transformer</b></td>
+          <td class="mono">In 100–240&nbsp;V<br>Out 12&nbsp;V / 0.84&nbsp;A</td>
+          <td>Powers the Ariva-S. Usually ships in the box — confirm it is included, as the USB link does <u>not</u> power the scale.</td>
+          <td class="num">1</td>
+        </tr>
+        <tr>
+          <td><b>Interface cable — USB</b><br>RJ50 → USB-A</td>
+          <td class="mono">#72256236</td>
+          <td><b>Recommended for the tablet.</b> USB virtual-COM cable (FTDI). Plugs the scale into the tablet's USB world.</td>
+          <td class="num">1</td>
+        </tr>
+        <tr>
+          <td>Interface cable — RS-232 <span class="pill">optional</span><br>RJ50 → DB9</td>
+          <td class="mono">#72256235</td>
+          <td>Only if you connect to a PC COM port instead of the tablet. Needs a separate RS-232→USB adapter for Android.</td>
+          <td class="num">0–1</td>
+        </tr>
+        <tr>
+          <td><b>USB-C OTG hub with PD passthrough</b></td>
+          <td class="mono">USB-C ↔ USB-A<br>+ USB-C PD in</td>
+          <td>The Tab A9 has one USB-C port. A PD hub runs the scale <b>and</b> keeps the tablet charged at an always-on station.</td>
+          <td class="num">1</td>
+        </tr>
+        <tr>
+          <td>USB-C charger + cable</td>
+          <td class="mono">≥ 15&nbsp;W PD</td>
+          <td>Feeds the hub's PD input so the mounted tablet never runs flat.</td>
+          <td class="num">1</td>
+        </tr>
+        <tr>
+          <td>Mount / cable ties <span class="pill">optional</span></td>
+          <td class="mono">—</td>
+          <td>Tidy the station and strain-relieve the cables.</td>
+          <td class="num">—</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin-top:10px;font-size:9.5pt;"><span class="pill warn">Note</span> &nbsp;A simple USB-C-to-USB-A OTG adapter also works if you don't need to charge while weighing — but for a permanently mounted station, use the PD hub.</p>
+  </div>
+
+  <!-- DIAGRAM -->
+  <div class="card">
+    <div class="eyebrow">Connection diagram</div>
+    <h2>How it all wires together</h2>
+    <div class="diagram">
+      <div class="flow">
+        <div class="node">
+          <div class="k">Scale</div>
+          <div class="t">Ariva-S-Mini</div>
+          <div class="s">RJ50 data port · 12&nbsp;V wall power</div>
+        </div>
+        <div class="arrow">
+          <div class="lab">RJ50 → USB-A<br>cable #72256236<br>(FTDI / CDC)</div>
+          <div class="line">→</div>
+        </div>
+        <div class="node">
+          <div class="k">Bridge</div>
+          <div class="t">USB-C OTG Hub</div>
+          <div class="s">USB-A in for scale · PD-C in for charging</div>
+        </div>
+        <div class="arrow">
+          <div class="lab">USB-C<br>(OTG host)</div>
+          <div class="line">→</div>
+        </div>
+        <div class="node">
+          <div class="k">Host</div>
+          <div class="t">Galaxy Tab A9</div>
+          <div class="s">TARE app · reads via usb_serial</div>
+        </div>
+      </div>
+      <div class="power-row">
+        <div class="pnode">⚡ <b>Mains → 12&nbsp;V adapter → Scale.</b> The scale is wall-powered; the USB link carries data only.</div>
+        <div class="pnode">⚡ <b>USB-C charger → Hub PD input.</b> Keeps the tablet charged while the scale stays connected.</div>
+      </div>
+    </div>
+    <p style="margin-top:12px;font-size:9.5pt;">Data path is a single serial link: the scale streams weight frames up the USB cable; Android's USB-host stack presents it to the app as a serial device. No PC and no cloud sit in the middle.</p>
+  </div>
+
+  <div class="kicker">Configuration — both sides must match</div>
+
+  <!-- SCALE SETUP -->
+  <div class="card">
+    <div class="eyebrow">Step 1 · on the scale</div>
+    <h2>Scale soft-switch setup (Group 3)</h2>
+    <p>Enter setup: hold the <code>&gt;T&lt;</code> (Tare) button ~5&nbsp;s until <span class="mono">CONF</span> shows. <b>Zero</b> = confirm / next, <b>Tare</b> = step through groups. Open <b>Group&nbsp;3</b> and set:</p>
+    <table>
+      <thead><tr><th style="width:14%">Step</th><th style="width:34%">Setting</th><th>Choose</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">3.1</td><td>Communication Type</td><td><span class="pill ok">1 — USB Ser/CDC (Virtual COM)</span> &nbsp;<span style="font-size:9pt">(use <span class="mono">0 — RS-232</span> only for the DB9/FTDI route)</span></td></tr>
+        <tr><td class="mono">3.2</td><td>Baud rate</td><td class="mono">3 — 9600</td></tr>
+        <tr><td class="mono">3.3</td><td>Parity</td><td class="mono">0 — None</td></tr>
+        <tr><td class="mono">3.4</td><td>Data bits</td><td class="mono">1 — 8 data bit</td></tr>
+        <tr><td class="mono">3.5</td><td>Stop bits</td><td class="mono">1 — 1 stop bit</td></tr>
+        <tr><td class="mono">3.6</td><td>Protocol Selection</td><td><span class="pill ok">3 — 8217 Mettler-Toledo (WO)</span></td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:10px;">Step out to <span class="mono">EXIT</span> → <span class="mono">SAVE</span> to store and reboot. The scale is ready when the weight display returns.</p>
+  </div>
+
+  <!-- APP CONFIG -->
+  <div class="card">
+    <div class="eyebrow">Step 2 · in the TARE app</div>
+    <h2>App settings (Settings → Weight source)</h2>
+    <ul class="clean">
+      <li>Set <b>Weight source</b> to <b>Serial — Streaming</b> (8217 WO streams continuously). If no reading appears, switch to <b>Serial — Polling</b>, which requests each reading with <code>W⏎</code>.</li>
+      <li>Under <b>Serial connection</b>, match the scale exactly: <span class="mono">9600 / None / 8 / 1</span>, protocol name <span class="mono">8217 Mettler-Toledo</span>.</li>
+      <li>Plug in the scale — Android shows a one-time <b>"Allow access to USB device?"</b> prompt. Tick <i>always</i> and accept.</li>
+      <li>The reading flows into the shared <b>ON SCALE</b> value; every order compares live, exactly as in test mode.</li>
+    </ul>
+    <p style="margin-top:10px;font-size:9.5pt;"><span class="pill ok">Auto-connect</span> &nbsp;The app opens the port on launch and also when the scale is plugged in later — no manual "connect" step.</p>
+  </div>
+
+  <!-- PINOUTS -->
+  <div class="card">
+    <div class="eyebrow">Reference · cable pinouts</div>
+    <h2>Cable wiring (for reference / re-crimping)</h2>
+    <p>You should not need to wire these yourself — buy the assembled Mettler-Toledo cables. Included for field diagnosis.</p>
+    <h3 style="margin-top:8px;">RS-232 · RJ50 → DB9 female &nbsp;<span class="mono" style="font-size:9pt">#72256235</span></h3>
+    <table>
+      <thead><tr><th>Scale RJ50</th><th>DB9 female</th><th>Signal</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">Pin 2</td><td class="mono">Pin 2</td><td>RxD — Receive Data</td></tr>
+        <tr><td class="mono">Pin 3</td><td class="mono">Pin 3</td><td>TxD — Transmit Data</td></tr>
+        <tr><td class="mono">Pin 4</td><td class="mono">Pin 5</td><td>GND — Signal Ground</td></tr>
+        <tr><td class="mono">Pin 7</td><td class="mono">Pin 8</td><td>CTS — Clear to Send</td></tr>
+        <tr><td class="mono">Pin 8</td><td class="mono">Pin 7</td><td>RTS — Request to Send</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:9pt;margin:6px 0 14px;">RJ50 pins 1, 5, 6, 9, 10 are proprietary (diagnostics, display power, loops) and are omitted for host integration.</p>
+    <h3>USB · RJ50 → USB-A &nbsp;<span class="mono" style="font-size:9pt">#72256236</span></h3>
+    <table>
+      <thead><tr><th>Scale RJ50</th><th>USB-A</th><th>Signal</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">Pin 4</td><td class="mono">Pin 4</td><td>GND</td></tr>
+        <tr><td class="mono">Pin 5</td><td class="mono">Pin 3</td><td>D+ (Data+)</td></tr>
+        <tr><td class="mono">Pin 6</td><td class="mono">Pin 2</td><td>D− (Data−)</td></tr>
+        <tr><td class="mono">Pin 10</td><td class="mono">Pin 1</td><td>VCC — +5&nbsp;V power detect</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:9pt;margin-top:6px;">An FTDI bridge is molded into the cable shell, so the tablet sees a standard USB serial device.</p>
+  </div>
+
+  <!-- PROTOCOL + DRIVERS -->
+  <div class="card">
+    <div class="eyebrow">Reference · protocol &amp; drivers</div>
+    <h2>Protocol, units &amp; the driver page</h2>
+    <ul class="clean">
+      <li><b>Protocol 8217 Mettler-Toledo (WO).</b> "Weights-Only": the scale reports the live weight; the host can also send zero/tare commands. The app reads the weight frames and updates the shared reading.</li>
+      <li><b>Units.</b> The Ariva is metric and reports kilograms (e.g. <span class="mono">0.250</span>). The app converts to grams automatically (a decimal value ⇒ kg ⇒ ×1000; a bare integer ⇒ grams; <span class="mono">kg</span>/<span class="mono">g</span>/<span class="mono">lb</span> tokens are also honoured).</li>
+      <li><b>The Ariva "Drivers" download page (JPOS / OPOS / Virtual COM Ports)</b> is for <u>PC</u> POS systems (Windows/Linux). You do <b>not</b> need any of those for the Android tablet — the app talks to the FTDI/CDC device directly. Only install the Virtual-COM (FTDI) driver if you later connect the scale to a Windows PC.</li>
+    </ul>
+  </div>
+
+  <!-- TROUBLESHOOTING -->
+  <div class="card">
+    <div class="eyebrow">If something's off</div>
+    <h2>Troubleshooting</h2>
+    <table>
+      <thead><tr><th style="width:34%">Symptom</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td><b>No reading / "connect a scale"</b></td><td>Confirm the scale is on (wall adapter), the OTG hub works, and you accepted the USB permission prompt. Re-check that the scale's Comm Type matches the cable (USB-CDC for #72256236). Try <b>Serial — Polling</b> if streaming shows nothing.</td></tr>
+        <tr><td><b>Weight is ~1000× off</b></td><td>Unit mismatch. The app assumes kg for decimal values; if your scale is set to output integer grams it's already handled. If still wrong, tell us the raw frame (below).</td></tr>
+        <tr><td><b>Garbled / no frames</b></td><td>Baud/parity/data/stop bits must match on both sides. Start with <span class="mono">9600 / None / 8 / 1</span>; if garbled, try the classic MT set <span class="mono">9600 / Even / 7 / 1</span> on both.</td></tr>
+        <tr><td><b>Tablet won't charge</b></td><td>Use the USB-C <b>PD</b> hub and feed its PD-C input from the charger; a plain OTG adapter can't charge and host at once.</td></tr>
+        <tr><td><b>Reading raw frames</b></td><td>The driver logs each raw frame via <span class="mono">adb logcat</span> — useful for tuning if a non-standard framing appears.</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:10px;font-size:9.5pt;"><span class="pill danger">Safety</span> &nbsp;Always unplug power before connecting/disconnecting cabling. Use only genuine Mettler-Toledo cables — counterfeit assemblies can damage the scale and void warranty.</p>
+  </div>
+
+  <!-- CHECKLIST -->
+  <div class="card tight">
+    <div class="eyebrow">Bring-up checklist</div>
+    <table>
+      <tbody>
+        <tr><td style="width:34px" class="mono">☐</td><td>Scale on mains via its 12&nbsp;V adapter; weight display shows.</td></tr>
+        <tr><td class="mono">☐</td><td>Scale Group 3 set: USB-CDC · 9600 · None · 8 · 1 · Protocol 8217; <span class="mono">SAVE</span>d.</td></tr>
+        <tr><td class="mono">☐</td><td>#72256236 cable → USB-C PD hub → tablet; charger into hub.</td></tr>
+        <tr><td class="mono">☐</td><td>App: Weight source = Serial (Streaming); serial values matched.</td></tr>
+        <tr><td class="mono">☐</td><td>USB permission accepted; a live weight appears in <b>ON SCALE</b>.</td></tr>
+        <tr><td class="mono">☐</td><td>Place a known weight → reading matches within tolerance.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footnote">TARE Pack Station · Ariva-S-Mini integration · prepared for SWiSH — swishhh.net</div>
+</div>
+</body>
+</html>

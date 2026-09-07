@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>4143819e-848d-4e85-86eb-6d4916697ac2</UserSecretsId>
+    <!-- Do not emit the app's own .exe (apphost). This machine's Application
+         Control policy blocks running user-built .exe files, so we launch via
+         Microsoft's signed dotnet host instead (dotnet run / dotnet <dll>). -->
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ClosedXML" Version="0.104.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.11" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+    <!-- Lets the published app run as a proper Windows Service (see
+         docs/PRODUCTION_DEPLOYMENT_GUIDE.md) — integrates with the Service
+         Control Manager's start/stop lifecycle instead of running as a bare
+         console process under it. A no-op when not hosted as a service
+         (dotnet run, IIS), so this never changes local dev behavior. -->
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+  </ItemGroup>
+
+</Project>

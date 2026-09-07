@@ -1,0 +1,63 @@
+{
+  "samples": 3000,
+  "strictTop1Accuracy": 0.845,
+  "classAccuracy": 0.9146666666666666,
+  "top3HitRate": 0.943,
+  "brierScore": 0.11586077481407045,
+  "supportByClass": {
+    "extraModifier": 26,
+    "extraItem": 714,
+    "wrongOrder": 754,
+    "missingItem": 773,
+    "naturalVariation": 720,
+    "missingModifier": 13
+  },
+  "recallByClass": {
+    "extraModifier": 0.15384615384615385,
+    "extraItem": 0.696078431372549,
+    "wrongOrder": 0.8620689655172413,
+    "missingItem": 0.8822768434670116,
+    "naturalVariation": 0.9680555555555556,
+    "missingModifier": 0.38461538461538464
+  },
+  "confusionMatrix": {
+    "extraModifier": {
+      "wrongOrder": 2,
+      "naturalVariation": 13,
+      "extraModifier": 11
+    },
+    "extraItem": {
+      "extraItem": 614,
+      "wrongOrder": 100
+    },
+    "wrongOrder": {
+      "wrongOrder": 703,
+      "missingItem": 30,
+      "extraItem": 20,
+      "naturalVariation": 1
+    },
+    "missingItem": {
+      "missingItem": 714,
+      "wrongOrder": 58,
+      "missingModifier": 1
+    },
+    "naturalVariation": {
+      "naturalVariation": 697,
+      "extraModifier": 15,
+      "missingModifier": 5,
+      "wrongOrder": 3
+    },
+    "missingModifier": {
+      "naturalVariation": 7,
+      "missingModifier": 5,
+      "wrongOrder": 1
+    }
+  },
+  "modelVersion": "1.0.0",
+  "trainedAt": "2026-07-22T10:12:55.752323Z",
+  "seed": 20240722,
+  "trueScaleNoiseGrams": 4.0,
+  "validationSize": 1500,
+  "testSize": 3000,
+  "searchIterations": 240
+}

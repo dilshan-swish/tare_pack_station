@@ -1,0 +1,64 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.build/
+.buildlog/
+.history
+.svn/
+.swiftpm/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch configuration and tasks you configure in
+# VS Code which you may wish to be included in version control, so this line
+# is commented out by default.
+#.vscode/
+
+# Flutter/Dart/Pub related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# Android Studio will place build artifacts here
+/android/app/debug
+/android/app/profile
+/android/app/release
+# Secrets — never commit
+"# FOODICS BRAND API KEYS.txt"
+assets/foodics/brands.json
+# Per-brand Foodics production tokens dropped at the repo root during setup —
+# matches every "<digits>_integration_prd_token.txt" file. These are live
+# credentials for the real Foodics accounts; they belong in the server's
+# Foodics__Brands__N__Token environment variables (see
+# docs/PRODUCTION_DEPLOYMENT_GUIDE.md §4.4), never in source control.
+*_integration_prd_token.txt
+
+# --- Backend (ASP.NET Core) build output — never commit, always rebuilt ---
+backend/**/bin/
+backend/**/obj/
+backend/**/publish/
+
+# --- Any TLS private key/cert material someone might drop in the repo ---
+*.pfx
+*.pem
+*.key

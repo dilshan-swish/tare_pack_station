@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Data Request — Missing & Mixed-Up Order Complaints (BBT)</title>
+<style>
+  @page { size: A4 portrait; margin: 16mm 15mm 14mm; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  :root{
+    --ink:#1b2620; --green:#2F8F5B; --green-d:#215c3c; --muted:#5d6b63;
+    --line:#d9e2dc; --soft:#f1f7f3; --soft2:#e7f1ea;
+  }
+  body{ font-family:'Segoe UI','Helvetica Neue',Arial,sans-serif; color:var(--ink);
+        font-size:10.4pt; line-height:1.5; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+  .band{ background:var(--green); color:#fff; padding:18px 20px; border-radius:8px; }
+  .band .kicker{ font-size:8.5pt; letter-spacing:.18em; text-transform:uppercase; opacity:.9; }
+  .band h1{ font-size:17pt; margin:5px 0 3px; line-height:1.15; }
+  .band .s{ font-size:10pt; opacity:.95; }
+
+  .meta{ display:grid; grid-template-columns:1fr 1fr; gap:2px 24px; margin:14px 0 4px; font-size:9.4pt; }
+  .meta div{ padding:3px 0; border-bottom:1px solid var(--line); }
+  .meta b{ color:var(--green-d); display:inline-block; min-width:92px; }
+
+  h2{ font-size:12pt; color:var(--green-d); margin:18px 0 7px; padding-left:10px; border-left:4px solid var(--green); }
+  p{ margin:0 0 8px; } ul{ margin:0 0 8px; padding-left:18px; } li{ margin-bottom:4px; }
+
+  table{ border-collapse:collapse; width:100%; margin:6px 0 4px; font-size:9.5pt; }
+  th{ background:var(--soft2); color:var(--green-d); text-align:left; padding:6px 9px; border:1px solid var(--line);
+      font-size:8.7pt; text-transform:uppercase; letter-spacing:.03em; }
+  td{ padding:6px 9px; border:1px solid var(--line); vertical-align:top; }
+  tbody tr:nth-child(even){ background:var(--soft); }
+  .k{ font-weight:700; color:var(--green-d); }
+
+  .callout{ background:var(--soft); border:1px solid var(--line); border-left:4px solid var(--green);
+            border-radius:0 8px 8px 0; padding:11px 14px; margin:8px 0; }
+  .callout b{ color:var(--green-d); }
+  .two{ column-count:2; column-gap:26px; }
+  .foot{ margin-top:16px; padding-top:8px; border-top:1px solid var(--line); font-size:8.4pt; color:var(--muted); }
+</style>
+</head>
+<body>
+
+  <div class="band">
+    <div class="kicker">SWiSH · Data &amp; BI Request</div>
+    <h1>Missing &amp; Mixed-Up Order Complaints — BBT</h1>
+    <div class="s">Baseline and ongoing reporting request</div>
+  </div>
+
+  <div class="meta">
+    <div><b>To</b> Data / BI Team</div>
+    <div><b>Brand</b> BBT (all branches)</div>
+    <div><b>From</b> Project Team</div>
+    <div><b>Required by</b> 02-Aug-2026</div>
+    <div><b>Priority</b> High</div>
+    <div><b>Classification</b> Internal</div>
+  </div>
+
+  <h2>1. What we need</h2>
+  <p>A baseline of customer complaints for <b>missing items</b> and <b>wrong / mixed-up orders</b> across all BBT
+  branches, together with <b>order volumes</b>, so we can track the complaint <b>rate</b> over time and identify the
+  branches most affected.</p>
+
+  <h2>2. Definitions</h2>
+  <table>
+    <thead><tr><th style="width:27%">Term</th><th>Meaning</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Missing item</td><td>Customer reports one or more ordered items were absent from the order.</td></tr>
+      <tr><td class="k">Wrong / mixed-up</td><td>Customer received a different order or the wrong item(s).</td></tr>
+      <tr><td class="k">Complaint rate</td><td>In-scope complaints per 1,000 orders (the reporting metric).</td></tr>
+    </tbody>
+  </table>
+
+  <h2>3. Data required</h2>
+  <table>
+    <thead><tr><th style="width:34%">Dataset</th><th>Fields</th></tr></thead>
+    <tbody>
+      <tr><td class="k">Complaints</td><td>Date · business date · branch (name + code) · order number · channel / aggregator · category (missing / wrong / mixed-up) · item(s) affected · resolution &amp; refund amount (if any).</td></tr>
+      <tr><td class="k">Order volume</td><td>Orders per branch, per day, per channel — used as the denominator for the rate.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>4. Period &amp; granularity</h2>
+  <table>
+    <thead><tr><th style="width:34%">View</th><th style="width:30%">Period</th><th>Granularity</th></tr></thead>
+    <tbody>
+      <tr><td>Trend</td><td>Last 12 months</td><td>Monthly</td></tr>
+      <tr><td>Working baseline</td><td>Last 12 weeks</td><td>Daily</td></tr>
+      <tr><td>Ongoing</td><td>From go-live onward</td><td>Daily</td></tr>
+    </tbody>
+  </table>
+  <div class="callout"><b>Headline metric:</b> missing + mixed-up complaints <b>per 1,000 orders</b> (12-week average),
+  reported overall and per branch. Please include the raw counts alongside the rate.</div>
+
+  <h2>5. Breakdowns &amp; outputs</h2>
+  <div class="two">
+    <ul>
+      <li><b>Branch ranking</b> — all branches, highest complaint rate first.</li>
+      <li><b>By type</b> — missing vs wrong/mixed-up.</li>
+      <li><b>By channel / aggregator</b> — dine-in, pickup, each partner.</li>
+      <li><b>Top 20 items</b> most reported as missing.</li>
+      <li><b>Monthly trend</b> and <b>daily series</b> (counts + rate).</li>
+    </ul>
+  </div>
+
+  <h2>6. Branches in scope — BBT</h2>
+  <table>
+    <thead><tr><th style="width:8%">#</th><th>Branch</th><th style="width:26%">Code</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>ADL-BBT</td><td>4865153615</td></tr>
+      <tr><td>2</td><td>ARD-BBT</td><td>65322</td></tr>
+      <tr><td>3</td><td>BBT-JBR</td><td>461256821</td></tr>
+      <tr><td>4</td><td>BYN-BBT</td><td>4455530</td></tr>
+      <tr><td>5</td><td>JHR-BBT</td><td>00652</td></tr>
+      <tr><td>6</td><td>KHR-BBT</td><td>5653549</td></tr>
+      <tr><td>7</td><td>KWT-BBT</td><td>010709</td></tr>
+      <tr><td>8</td><td>MIS-BBT</td><td>000111</td></tr>
+      <tr><td>9</td><td>MNF-BBT</td><td>4455531</td></tr>
+      <tr><td>10</td><td>OMH-BBT — Um Al Haiman</td><td>6354125</td></tr>
+      <tr><td>11</td><td>SAD-BBT</td><td>9883121</td></tr>
+      <tr><td>12</td><td>SAL-BBT</td><td>00321</td></tr>
+      <tr><td>13</td><td>SBA-BBT</td><td>5121651020</td></tr>
+      <tr><td>14</td><td>SHD-BBT</td><td>6512</td></tr>
+      <tr><td>15</td><td>SMY-BBT</td><td>010702</td></tr>
+      <tr><td>16</td><td>YRD-BBT</td><td>00005</td></tr>
+    </tbody>
+  </table>
+
+  <h2>7. Delivery</h2>
+  <p>Power BI dashboard with drill-down (branch, type, channel, item, date) plus the underlying dataset
+  (Excel / CSV). Daily refresh. Required by <b>02-Aug-2026</b>.</p>
+
+  <div class="foot">SWiSH · BBT · Missing &amp; Mixed-Up Order Complaints — Data Request · Internal</div>
+</body>
+</html>
