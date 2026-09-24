@@ -107,7 +107,12 @@ class _OrdersQueueScreenState extends ConsumerState<OrdersQueueScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ordersAsync = ref.watch(ordersProvider);
+    // The Settings-filtered view for display; the raw, unfiltered fetch stays
+    // available too (just for the hidden-count comparison below) so
+    // dispatch/refresh/sync keep operating on the real underlying list no
+    // matter what's currently hidden.
+    final ordersAsync = ref.watch(filteredOrdersProvider);
+    final rawOrders = ref.watch(ordersProvider).value ?? const <Order>[];
     // Watched here so the head-office heartbeat, menu sync, and optional ML
     // model sync all run while the app is open (a Notifier only stays alive
     // while something watches it).
@@ -135,6 +140,14 @@ class _OrdersQueueScreenState extends ConsumerState<OrdersQueueScreen> {
               for (final o in orders)
                 if (o.status == OrderStatus.dispatched) o,
             ];
+            // Whether "To Be Weighed" is empty because everything's genuinely
+            // done, or only because the current Settings filter is hiding
+            // every unweighed order — these need different messages, or
+            // staff would read a real backlog as "nothing to do".
+            final rawToWeighCount = rawOrders
+                .where((o) => o.status != OrderStatus.dispatched)
+                .length;
+            final hiddenToWeighCount = rawToWeighCount - toWeigh.length;
             final correct = done.where((o) => o.overrideReason == null).length;
             final accuracy =
                 done.isEmpty ? 100 : ((correct / done.length) * 100).round();
@@ -148,6 +161,7 @@ class _OrdersQueueScreenState extends ConsumerState<OrdersQueueScreen> {
               hoStatus: hoStatus,
               menu: menu,
               queuedWeighEvents: queuedWeighEvents,
+              hiddenByFilterCount: rawOrders.length - orders.length,
               onSync: _sync,
               onSyncMenu: _syncMenu,
               onSettings: () => Navigator.of(context).push(
@@ -183,7 +197,13 @@ class _OrdersQueueScreenState extends ConsumerState<OrdersQueueScreen> {
                             ),
                           ),
                         ],
-                        data: (_) => _sections(pad, toWeigh, done),
+                        data: (_) => _sections(
+                          pad,
+                          toWeigh,
+                          done,
+                          hiddenToWeighCount: hiddenToWeighCount,
+                          onOpenSettings: controls.onSettings,
+                        ),
                       ),
                       const SliverToBoxAdapter(child: SizedBox(height: 96)),
                     ],
@@ -205,13 +225,24 @@ class _OrdersQueueScreenState extends ConsumerState<OrdersQueueScreen> {
     );
   }
 
-  List<Widget> _sections(double pad, List<Order> toWeigh, List<Order> done) {
+  List<Widget> _sections(
+    double pad,
+    List<Order> toWeigh,
+    List<Order> done, {
+    required int hiddenToWeighCount,
+    required VoidCallback onOpenSettings,
+  }) {
     return [
       _sectionHeader(pad, 'To Be Weighed', count: toWeigh.length),
       if (toWeigh.isEmpty)
         SliverPadding(
           padding: EdgeInsets.fromLTRB(pad, 4, pad, 8),
-          sliver: const SliverToBoxAdapter(child: _AllWeighedEmpty()),
+          sliver: SliverToBoxAdapter(
+            child: hiddenToWeighCount > 0
+                ? _HiddenByFilterEmpty(
+                    count: hiddenToWeighCount, onOpenSettings: onOpenSettings)
+                : const _AllWeighedEmpty(),
+          ),
         )
       else
         SliverPadding(
@@ -291,6 +322,10 @@ class _ControlStrip extends StatelessWidget {
   final HeadOfficeStatus hoStatus;
   final HeadOfficeMenuState menu;
   final int queuedWeighEvents;
+  // How many currently-fetched orders (any status) the Settings order-type
+  // filter is hiding right now — 0 on every normal day nobody's touched that
+  // filter. Shown as a tappable chip straight into Settings, never silent.
+  final int hiddenByFilterCount;
   final VoidCallback onSync;
   final VoidCallback onSyncMenu;
   final VoidCallback onSettings;
@@ -302,6 +337,7 @@ class _ControlStrip extends StatelessWidget {
     required this.streak,
     required this.accuracy,
     required this.hoStatus,
+    required this.hiddenByFilterCount,
     required this.menu,
     required this.queuedWeighEvents,
     required this.onSync,
@@ -365,6 +401,16 @@ class _ControlStrip extends StatelessWidget {
                   icon: Icons.cloud_upload,
                   label: '$queuedWeighEvents pending sync',
                   tint: AppColors.amber,
+                ),
+              // Only shown once the order-type filter in Settings is actually
+              // hiding something — invisible on every branch that leaves
+              // every type enabled (the default).
+              if (hiddenByFilterCount > 0)
+                _Chip(
+                  icon: Icons.filter_alt_off_outlined,
+                  label: '$hiddenByFilterCount hidden',
+                  tint: AppColors.amber,
+                  onTap: onSettings,
                 ),
               // Doubles as "Sync now" — orders already auto-sync every 10s,
               // so a dedicated button was mostly redundant; tapping the
@@ -646,6 +692,43 @@ class _AllWeighedEmpty extends StatelessWidget {
           Text('All orders have been weighed',
               style: AppTextStyles.body(
                   size: 15.5, weight: FontWeight.w600, color: AppColors.muted)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown instead of [_AllWeighedEmpty] when "To Be Weighed" is empty only
+/// because the current Settings order-type filter is hiding every unweighed
+/// order — never a silent, unexplained empty queue that reads as "nothing to
+/// do" when there actually is.
+class _HiddenByFilterEmpty extends StatelessWidget {
+  final int count;
+  final VoidCallback onOpenSettings;
+  const _HiddenByFilterEmpty({required this.count, required this.onOpenSettings});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 30),
+      child: Column(
+        children: [
+          Icon(Icons.filter_alt_off_outlined,
+              size: 48, color: AppColors.amber),
+          const SizedBox(height: 12),
+          Text(
+            '$count order${count == 1 ? '' : 's'} hidden by your order-type filter',
+            textAlign: TextAlign.center,
+            style: AppTextStyles.body(
+                size: 15.5, weight: FontWeight.w600, color: AppColors.ink),
+          ),
+          const SizedBox(height: 10),
+          PillButton(
+            label: 'Open Settings',
+            icon: Icons.tune,
+            variant: PillButtonVariant.outline,
+            onPressed: onOpenSettings,
+          ),
         ],
       ),
     );

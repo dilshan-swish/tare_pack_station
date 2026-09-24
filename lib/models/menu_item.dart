@@ -1,3 +1,4 @@
+import 'fixed_inclusion.dart';
 import 'modifier.dart';
 
 /// A menu item and its weighed data. In test mode "weighing" means typing a
@@ -17,6 +18,15 @@ class MenuItem {
   final double baseWeightGrams;
   final double baseWeightStdDev;
   final List<Modifier> availableModifiers;
+
+  /// Components that always ship with this item but that a customer never
+  /// picks, so they never appear in an order's selected modifiers — see
+  /// [FixedInclusion]. Deliberately a separate list from
+  /// [availableModifiers]: these must never be offered as a selectable
+  /// option, and they contribute to every order of this item regardless of
+  /// what the order says.
+  final List<FixedInclusion> fixedInclusions;
+
   final double packagingWeightGrams;
 
   /// Optional explicit acceptance range (grams). When both are set the weight
@@ -37,6 +47,7 @@ class MenuItem {
     required this.baseWeightGrams,
     this.baseWeightStdDev = 0,
     this.availableModifiers = const [],
+    this.fixedInclusions = const [],
     this.packagingWeightGrams = 0,
     this.minWeightGrams,
     this.maxWeightGrams,
@@ -54,11 +65,18 @@ class MenuItem {
   /// yet are *not* configured; the app warns rather than inventing a value.
   bool get isWeightConfigured => hasRange || baseWeightGrams > 0;
 
+  /// Declared always-included components that nobody has weighed yet. Each
+  /// one makes this item's expected weight incomplete, exactly like an
+  /// unweighed modifier does — see findUnconfiguredWeightMessages.
+  Iterable<FixedInclusion> get unweighedInclusions =>
+      fixedInclusions.where((i) => !i.isWeightConfigured);
+
   MenuItem copyWith({
     String? name,
     double? baseWeightGrams,
     double? baseWeightStdDev,
     List<Modifier>? availableModifiers,
+    List<FixedInclusion>? fixedInclusions,
     double? packagingWeightGrams,
     double? minWeightGrams,
     double? maxWeightGrams,
@@ -71,6 +89,7 @@ class MenuItem {
       baseWeightGrams: baseWeightGrams ?? this.baseWeightGrams,
       baseWeightStdDev: baseWeightStdDev ?? this.baseWeightStdDev,
       availableModifiers: availableModifiers ?? this.availableModifiers,
+      fixedInclusions: fixedInclusions ?? this.fixedInclusions,
       packagingWeightGrams: packagingWeightGrams ?? this.packagingWeightGrams,
       minWeightGrams: clearRange ? null : (minWeightGrams ?? this.minWeightGrams),
       maxWeightGrams: clearRange ? null : (maxWeightGrams ?? this.maxWeightGrams),
@@ -92,6 +111,8 @@ class MenuItem {
         'baseWeightStdDev': baseWeightStdDev,
         'availableModifiers':
             availableModifiers.map((m) => m.toJson()).toList(),
+        if (fixedInclusions.isNotEmpty)
+          'fixedInclusions': fixedInclusions.map((i) => i.toJson()).toList(),
         'packagingWeightGrams': packagingWeightGrams,
         if (minWeightGrams != null) 'minWeightGrams': minWeightGrams,
         if (maxWeightGrams != null) 'maxWeightGrams': maxWeightGrams,
@@ -105,6 +126,9 @@ class MenuItem {
         baseWeightStdDev: (json['baseWeightStdDev'] as num?)?.toDouble() ?? 0,
         availableModifiers: (json['availableModifiers'] as List<dynamic>? ?? [])
             .map((m) => Modifier.fromJson(m as Map<String, dynamic>))
+            .toList(),
+        fixedInclusions: (json['fixedInclusions'] as List<dynamic>? ?? [])
+            .map((i) => FixedInclusion.fromJson(i as Map<String, dynamic>))
             .toList(),
         packagingWeightGrams:
             (json['packagingWeightGrams'] as num?)?.toDouble() ?? 0,

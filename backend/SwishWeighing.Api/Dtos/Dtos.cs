@@ -1,17 +1,41 @@
 namespace SwishWeighing.Api.Dtos;
 
 public record BrandSummaryDto(int BrandId, string Code, string Name, int PublishedVersion,
-    int TotalItems, int MissingWeights);
+    int TotalItems, int MissingWeights,
+    decimal? BagIdealWeightG = null, decimal? BagMinWeightG = null, decimal? BagMaxWeightG = null);
+
+/// <summary>Updates a brand's one-bag packaging range (see Brand.BagIdealWeightG).</summary>
+public record UpdateBrandPackagingDto(decimal? BagIdealWeightG, decimal? BagMinWeightG, decimal? BagMaxWeightG);
 
 // ModifierIds: the FoodicsModifierId of each option actually linked to THIS
 // item (already narrowed via the product<->group pivot's excluded_options_ids
 // — see FoodicsService — so it's the real, non-duplicated set a customer can
 // actually pick on this item, not every catalog row sharing a shared group).
+// Inclusions: this item's always-included, non-selectable components (see
+// MenuItemInclusion) — always sent, so a client that replaces its whole local
+// copy of an item with this DTO can never silently lose them.
 public record MenuItemDto(int MenuItemId, string FoodicsProductId, string Name, string? CategoryName,
     string? Sku, string? CategoryReference, bool IsActive, bool HasModifiers,
     IReadOnlyList<string> ModifierIds,
     decimal? IdealWeightG, decimal? MinWeightG, decimal? MaxWeightG, decimal? PackagingWeightG,
-    bool IsConfigured);
+    bool IsConfigured, IReadOnlyList<MenuItemInclusionDto> Inclusions);
+
+// --- Always-included components (see MenuItemInclusion / docs/sql/19) ---
+// A part of the item that a customer never picks, so it never appears on the
+// Foodics order — the tablet adds it to the expected weight for every order
+// of this item, which is what lets a missing one actually trip the
+// under-weight check instead of being averaged into the item's own band.
+// IdealWeightG is nullable: an inclusion can be declared before it's weighed,
+// and until then the tablet reports the order unconfigured rather than
+// treating the inclusion as 0g.
+public record MenuItemInclusionDto(int InclusionId, int MenuItemId, string Name,
+    decimal? IdealWeightG, decimal? MinWeightG, decimal? MaxWeightG,
+    bool IsConfigured, DateTime UpdatedAt, string? UpdatedBy);
+
+// Name is required and unique per item (re-adding the same name is an edit,
+// never a second silently-double-counted inclusion).
+public record MenuItemInclusionUpsertDto(string Name, decimal? IdealWeightG,
+    decimal? MinWeightG, decimal? MaxWeightG, string? UpdatedBy);
 
 public record ModifierDto(int ModifierId, string FoodicsModifierId, string Name,
     string? ModifierGroupName, string? Sku, string? ModifierGroupReference, bool IsActive,
@@ -57,7 +81,8 @@ public record BrandConfigDto(int BrandId, string Code, string Name, int Publishe
     IReadOnlyList<MenuItemDto> Items, IReadOnlyList<ModifierDto> Modifiers,
     string? FoodicsBranchId = null, string? BranchName = null,
     string? BranchNameLocalized = null, string? BranchOpeningFrom = null, string? BranchOpeningTo = null,
-    int MenuSyncedVersion = 0, IReadOnlyList<ModifierCombinationConfigDto>? ModifierCombinations = null);
+    int MenuSyncedVersion = 0, IReadOnlyList<ModifierCombinationConfigDto>? ModifierCombinations = null,
+    decimal? BagIdealWeightG = null, decimal? BagMinWeightG = null, decimal? BagMaxWeightG = null);
 
 // Tablet-facing combination override, keyed by Foodics modifier ids (the
 // tablet's menuIndex never sees our internal int ModifierIds) — see
@@ -77,7 +102,8 @@ public record WeighEventDto(int BranchId, int? DeviceId, string? FoodicsOrderId,
     decimal? ExpectedMinG, decimal? ExpectedMaxG, decimal? MeasuredG,
     string Verdict, string? OverrideReason, bool? ItemMissing, DateTime? WeighedAt,
     List<WeighEventItemDto>? Items = null, string? OrderLabel = null,
-    List<string>? UnconfiguredReasons = null);
+    List<string>? UnconfiguredReasons = null,
+    string? AggregatorName = null, string? AggregatorRef = null);
 
 public record WeighEventModifierDto(string ModifierId, string? Name);
 
@@ -106,6 +132,54 @@ public record TrainingComponentDto(int LineIndex, string Key, string Label, stri
 public record TrainingOrderPreviewDto(long EventId, DateTime WeighedAt, string? BrandCode, string? BranchName,
     decimal? MeasuredG, string Verdict, string? OverrideReason, bool Trusted, string? ExcludeReason,
     IReadOnlyList<TrainingComponentDto> Components, int UnmappedCount);
+
+// One weighed order for the portal's Weigh History browser — general-purpose
+// (unlike TrainingOrderPreviewDto, which frames every row as clean/excluded
+// for model training). ItemNames is just the resolved item labels, for the
+// table's summary column — the full composition is still in the CSV export.
+public record WeighHistoryRowDto(long EventId, DateTime WeighedAt, string? BrandCode, string? BranchName,
+    string? DeviceLabel, string? OrderLabel, decimal? ExpectedMinG, decimal? ExpectedMaxG, decimal? MeasuredG,
+    string Verdict, string? OverrideReason, IReadOnlyList<string> ItemNames);
+
+// The verdict breakdown for the portal's small summary tiles — computed over
+// EXACTLY the same population every other active filter already narrows
+// Browse's rows to (brand/branch/device/date/verdict/items/itemCount all
+// included), so Total always equals the "N orders match" figure and the four
+// counts describe precisely what's on screen, never a separately-scoped
+// "overall" number. Total can exceed OnWeight+Under+Over+Unconfigured only if
+// a row has a stray/legacy verdict outside those four (e.g. "unknown").
+public record WeighHistoryVerdictCountsDto(int Total, int OnWeight, int Under, int Over, int Unconfigured);
+
+// TotalCount is the full filtered count (for the page's "N results" and
+// pagination), independent of how many Rows this one page actually carries.
+public record WeighHistoryResultDto(int TotalCount, IReadOnlyList<WeighHistoryRowDto> Rows,
+    WeighHistoryVerdictCountsDto VerdictCounts);
+
+// One plottable weigh event for the portal's Expected-vs-Measured scatter
+// chart — only ever created for a row that actually has all three of
+// ExpectedMinG/ExpectedMaxG/MeasuredG (see WeighScatterResultDto.Excluded for
+// what didn't qualify). Deliberately carries the full min/max, not just a
+// midpoint, so the chart can show the real accepted band in a tooltip rather
+// than reducing it to a single number before the person ever sees it.
+// BrandCode: lets the portal resolve which brand's live catalog to fetch when
+// a point is clicked open into the same order-breakdown modal the table
+// uses (WeighHistoryRowDto.BrandCode plays the identical role there) —
+// without it the breakdown would have no way to show current-vs-measured
+// ticks for a chart that can span several brands at once.
+public record WeighScatterPointDto(long EventId, decimal ExpectedMinG, decimal ExpectedMaxG,
+    decimal MeasuredG, string Verdict, string? BrandCode);
+
+// Same filters as Browse (brand/branch/device/verdict/date/items/itemCount),
+// unpaginated. Excluded counts rows that matched every filter but couldn't
+// be plotted (missing an expected range or a measured weight) — surfaced
+// rather than silently dropped, so "753 plotted" is never mistaken for
+// "753 total matches".
+public record WeighScatterResultDto(int Plotted, int Excluded, IReadOnlyList<WeighScatterPointDto> Points);
+
+/// <summary>Branch ids to permanently clear weigh events for — the portal's
+/// "Clear weigh events" tool. No implicit "every branch"; clearing everything
+/// means selecting every branch explicitly.</summary>
+public record BulkDeleteWeighEventsDto(List<int> BranchIds);
 
 // Counts are over the FULL filtered set (cheap COUNT queries), except
 // SampledOrdersWithUnmapped which is only over the returned preview sample
@@ -210,7 +284,8 @@ public record DeviceDetailDto(int DeviceId, string Label, string? AppVersion,
 public record WeighEventEntryDto(long EventId, int? DeviceId, string? FoodicsOrderId,
     decimal? ExpectedMinG, decimal? ExpectedMaxG, decimal? MeasuredG,
     string Verdict, string? OverrideReason, bool? ItemMissing, DateTime WeighedAt,
-    string? ItemsJson = null, string? OrderLabel = null, string? UnconfiguredReasonsJson = null);
+    string? ItemsJson = null, string? OrderLabel = null, string? UnconfiguredReasonsJson = null,
+    string? AggregatorName = null, string? AggregatorRef = null);
 
 // --- Analytics ("AI COO"-style predefined-question insights) ---
 

@@ -1,0 +1,10 @@
+{
+  "name": "TARE Weigh — BBT",
+  "short_name": "TARE Weigh",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#2F8F5B",
+  "theme_color": "#2F8F5B",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}

@@ -4,12 +4,25 @@ import { api, ApiError } from "../api";
 import type {
   BrandSummary,
   MenuItem,
+  MenuItemInclusion,
   Modifier,
   ItemModifierGroup,
   ModifierCombination,
   MenuImportResult,
 } from "../types";
-import { Card, Button, Badge, Banner, Spinner, Coverage, NumberInput, Select, Modal, TogglePill } from "../ui";
+import {
+  Card,
+  Button,
+  Badge,
+  Banner,
+  Spinner,
+  Coverage,
+  NumberInput,
+  TextInput,
+  Select,
+  Modal,
+  TogglePill,
+} from "../ui";
 import { askConfirm } from "../confirmDialog";
 
 // Tri-state filters: "all" sends no query param (backend returns everything).
@@ -312,6 +325,8 @@ export function WeightsPage() {
         </div>
       </Card>
 
+      {brand && <BagPackagingEditor brand={brand} onSaved={setBrand} />}
+
       {note && <div className="mb-4"><Banner tone="ok">{note}</Banner></div>}
       {error && <div className="mb-4"><Banner tone="bad">{error}</Banner></div>}
 
@@ -529,6 +544,239 @@ function StatsBar({
 
 const toNum = (s: string): number | null => (s.trim() === "" ? null : Number(s));
 
+// Shared by the add row and every edit row so both enforce exactly the same
+// rules the API does — a mismatch here would only ever show up as a
+// server-side rejection after the person had already filled the form in.
+function validateInclusionDraft(
+  name: string,
+  ideal: number | null,
+  min: number | null,
+  max: number | null,
+): string | null {
+  if (!name.trim()) return "A name is required (e.g. “Ranch”).";
+  if (name.trim().length > 120) return "Name must be 120 characters or fewer.";
+  for (const v of [ideal, min, max]) {
+    if (v !== null && Number.isNaN(v)) return "Numbers only.";
+    if (v !== null && v < 0) return "Weights cannot be negative.";
+  }
+  if (min !== null && max !== null && max < min) return "Max must be ≥ Min.";
+  if (ideal !== null && ((min !== null && ideal < min) || (max !== null && ideal > max)))
+    return "Ideal must fall between Min and Max.";
+  return null;
+}
+
+// One always-included component. `row` null puts this in "add" mode — the
+// same fields and the same validation, so the two can never drift apart.
+function InclusionRow({
+  itemId,
+  row,
+  onSaved,
+  onRemoved,
+}: {
+  itemId: number;
+  row: MenuItemInclusion | null;
+  onSaved: (saved: MenuItemInclusion) => void;
+  onRemoved?: (inclusionId: number) => void;
+}) {
+  const [name, setName] = useState(row?.name ?? "");
+  const [ideal, setIdeal] = useState(row?.idealWeightG?.toString() ?? "");
+  const [min, setMin] = useState(row?.minWeightG?.toString() ?? "");
+  const [max, setMax] = useState(row?.maxWeightG?.toString() ?? "");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  // Same reasoning as ItemRow's own resync: if this inclusion changes from
+  // outside this row (another tab, a reload), the fields must follow rather
+  // than showing stale values forever.
+  useEffect(() => {
+    if (!row) return;
+    setName(row.name);
+    setIdeal(row.idealWeightG?.toString() ?? "");
+    setMin(row.minWeightG?.toString() ?? "");
+    setMax(row.maxWeightG?.toString() ?? "");
+  }, [row]);
+
+  async function submit() {
+    const iv = toNum(ideal);
+    const mn = toNum(min);
+    const mx = toNum(max);
+    const problem = validateInclusionDraft(name, iv, mn, mx);
+    if (problem) {
+      setErr(problem);
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const body = {
+        name: name.trim(),
+        idealWeightG: iv,
+        minWeightG: mn,
+        maxWeightG: mx,
+      };
+      const result = row
+        ? await api.updateInclusion(row.inclusionId, body)
+        : await api.createInclusion(itemId, body);
+      onSaved(result);
+      if (row) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1600);
+      } else {
+        // Add mode: clear the form so the next one can be typed straight in.
+        setName("");
+        setIdeal("");
+        setMin("");
+        setMax("");
+      }
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Save failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    if (!row || !onRemoved) return;
+    if (
+      !(await askConfirm(
+        `Remove “${row.name}” from this item? Its weight stops counting towards every order of this item once the scales pick up the change.`,
+      ))
+    )
+      return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.deleteInclusion(row.inclusionId);
+      onRemoved(row.inclusionId);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn't remove that.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-line bg-page px-3 py-2.5">
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+        <label className="block min-w-40 grow">
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Component
+          </span>
+          <TextInput
+            value={name}
+            placeholder="e.g. Ranch"
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void submit();
+            }}
+          />
+        </label>
+        <Field label="Ideal (g)">
+          <NumberInput value={ideal} onChange={(e) => setIdeal(e.target.value)} />
+        </Field>
+        <Field label="Min (g)">
+          <NumberInput value={min} onChange={(e) => setMin(e.target.value)} />
+        </Field>
+        <Field label="Max (g)">
+          <NumberInput value={max} onChange={(e) => setMax(e.target.value)} />
+        </Field>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => void submit()}
+            disabled={busy}
+            className={saved ? "animate-pop bg-oktext" : ""}
+          >
+            {busy ? "Saving…" : saved ? "Saved ✓" : row ? "Save" : "Add"}
+          </Button>
+          {row && (
+            <button
+              type="button"
+              onClick={() => void remove()}
+              disabled={busy}
+              className="text-xs font-semibold text-muted transition-colors hover:text-badtext disabled:opacity-50"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+      </div>
+      {row && !row.isConfigured && (
+        <div className="mt-1.5 text-xs font-semibold text-badtext">
+          Not weighed yet — orders with this item stay “unconfigured” on the scale until it has an
+          ideal weight.
+        </div>
+      )}
+      {err && <div className="mt-1.5 text-sm font-semibold text-badtext">{err}</div>}
+    </div>
+  );
+}
+
+/// The always-included components for one item. These are parts of the bag a
+/// customer never picks — a ranch dip, a slaw — so Foodics never reports them
+/// and the scale can only learn about them from here. Declaring one is what
+/// makes a bag that's missing it actually read as under-weight, instead of
+/// the omission being absorbed into the item's own Min/Max band.
+function InclusionsPanel({
+  itemId,
+  rows,
+  onChanged,
+}: {
+  itemId: number;
+  rows: MenuItemInclusion[];
+  onChanged: (rows: MenuItemInclusion[]) => void;
+}) {
+  const totalIdeal = rows.reduce((sum, r) => sum + (r.idealWeightG ?? 0), 0);
+  const unweighed = rows.filter((r) => !r.isConfigured).length;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs leading-relaxed text-muted">
+        Parts of the bag that always ship with this item but that a customer never picks, so they
+        never reach us from the POS — a dip, a slaw, a sauce cup. The scale adds these to the
+        expected weight of every order containing this item, which is what makes a bag that’s
+        missing one read as under weight.
+      </p>
+
+      {rows.length > 0 && (
+        <div className="space-y-2">
+          {rows.map((r) => (
+            <InclusionRow
+              key={r.inclusionId}
+              itemId={itemId}
+              row={r}
+              onSaved={(saved) =>
+                onChanged(rows.map((x) => (x.inclusionId === saved.inclusionId ? saved : x)))
+              }
+              onRemoved={(id) => onChanged(rows.filter((x) => x.inclusionId !== id))}
+            />
+          ))}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <span className="font-semibold text-ink">
+              Adds <span className="font-mono">{totalIdeal}g</span> to every order of this item
+            </span>
+            {unweighed > 0 && (
+              <Badge tone="bad">
+                {unweighed} not weighed yet
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-muted">
+          Add a component
+        </div>
+        <InclusionRow
+          itemId={itemId}
+          row={null}
+          onSaved={(created) => onChanged([...rows, created].sort((a, b) => a.name.localeCompare(b.name)))}
+        />
+      </div>
+    </div>
+  );
+}
+
 // Unlike an item, a modifier's weight may be negative — e.g. "No Onion" or "No
 // Cheese" represents weight REMOVED from the base item, not added. The
 // shared NumberInput defaults to min=0 (right for item fields, which can
@@ -567,6 +815,11 @@ function ItemRow({
   const [err, setErr] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [modsOpen, setModsOpen] = useState(false);
+  // Always-included components arrive with the item itself, so the count is
+  // known without opening anything and without an extra round trip.
+  const [inclusions, setInclusions] = useState<MenuItemInclusion[]>(item.inclusions);
+  const [incOpen, setIncOpen] = useState(false);
+  useEffect(() => setInclusions(item.inclusions), [item.inclusions]);
   const [modGroups, setModGroups] = useState<ItemModifierGroup[] | null>(null);
   const [modsErr, setModsErr] = useState<string | null>(null);
   const [combineOpen, setCombineOpen] = useState(false);
@@ -711,20 +964,39 @@ function ItemRow({
             )}
             {item.sku && <span className="font-mono text-[11px]">SKU {item.sku}</span>}
           </div>
-          {item.hasModifiers && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+            {item.hasModifiers && (
+              <button
+                type="button"
+                onClick={() => void toggleMods()}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-muted transition-colors hover:text-ink"
+              >
+                Modifiers — {modsOpen ? "hide" : "show"}
+                <span
+                  className={`transition-transform duration-200 ${modsOpen ? "rotate-180" : ""}`}
+                >
+                  ▾
+                </span>
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => void toggleMods()}
-              className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-muted transition-colors hover:text-ink"
+              onClick={() => setIncOpen((v) => !v)}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-muted transition-colors hover:text-ink"
             >
-              Modifiers — {modsOpen ? "hide" : "show"}
-              <span
-                className={`transition-transform duration-200 ${modsOpen ? "rotate-180" : ""}`}
-              >
+              Always included
+              {inclusions.length > 0 && (
+                <span className="font-mono text-ink">({inclusions.length})</span>
+              )}{" "}
+              — {incOpen ? "hide" : "show"}
+              <span className={`transition-transform duration-200 ${incOpen ? "rotate-180" : ""}`}>
                 ▾
               </span>
             </button>
-          )}
+            {inclusions.some((i) => !i.isConfigured) && (
+              <Badge tone="bad">Included part needs weight</Badge>
+            )}
+          </div>
         </div>
 
         <Field label="Ideal (g)">
@@ -749,6 +1021,12 @@ function ItemRow({
         </Button>
       </div>
       {err && <div className="mt-2 text-sm font-semibold text-badtext">{err}</div>}
+
+      {incOpen && (
+        <div className="animate-fade-up mt-4 border-t border-line pt-4">
+          <InclusionsPanel itemId={item.menuItemId} rows={inclusions} onChanged={setInclusions} />
+        </div>
+      )}
 
       {modsOpen && (
         <div className="animate-fade-up mt-4 space-y-3 border-t border-line pt-4">
@@ -1673,6 +1951,93 @@ function ModifierGroupCard({
           ))}
         </div>
       )}
+    </Card>
+  );
+}
+
+function BagPackagingEditor({
+  brand,
+  onSaved,
+}: {
+  brand: BrandSummary;
+  onSaved: (b: BrandSummary) => void;
+}) {
+  const [ideal, setIdeal] = useState(brand.bagIdealWeightG?.toString() ?? "");
+  const [min, setMin] = useState(brand.bagMinWeightG?.toString() ?? "");
+  const [max, setMax] = useState(brand.bagMaxWeightG?.toString() ?? "");
+  // Same reason as ItemWeightRow above: resync if the persisted value changes
+  // from outside this row (a re-sync, another tab, switching brands).
+  useEffect(() => {
+    setIdeal(brand.bagIdealWeightG?.toString() ?? "");
+    setMin(brand.bagMinWeightG?.toString() ?? "");
+    setMax(brand.bagMaxWeightG?.toString() ?? "");
+  }, [brand.brandId, brand.bagIdealWeightG, brand.bagMinWeightG, brand.bagMaxWeightG]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function save() {
+    const iv = toNum(ideal);
+    const mn = toNum(min);
+    const mx = toNum(max);
+    for (const v of [iv, mn, mx])
+      if (v !== null && Number.isNaN(v)) {
+        setErr("Numbers only.");
+        return;
+      }
+    if (mn !== null && mx !== null && mx < mn) {
+      setErr("Max must be ≥ Min.");
+      return;
+    }
+    if (iv !== null && ((mn !== null && iv < mn) || (mx !== null && iv > mx))) {
+      setErr("Ideal must fall between Min and Max.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      const updated = await api.updateBrandPackaging(brand.brandId, {
+        bagIdealWeightG: iv,
+        bagMinWeightG: mn,
+        bagMaxWeightG: mx,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1600);
+      onSaved(updated);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6 p-5">
+      <div className="font-display text-sm text-ink">Packaging — bag &amp; extras</div>
+      <p className="mt-0.5 max-w-2xl text-xs text-muted">
+        One bag's worth of packaging — bag material, napkins, sauce cups. The tablet multiplies
+        this by however many bags a worker actually captures for an order, so a two-bag order
+        expects roughly twice the packaging instead of being checked against a one-bag number.
+      </p>
+      <div className="mt-4 flex flex-wrap items-end gap-4">
+        <Field label="Ideal (g)">
+          <NumberInput value={ideal} onChange={(e) => setIdeal(e.target.value)} />
+        </Field>
+        <Field label="Min (g)">
+          <NumberInput value={min} onChange={(e) => setMin(e.target.value)} />
+        </Field>
+        <Field label="Max (g)">
+          <NumberInput value={max} onChange={(e) => setMax(e.target.value)} />
+        </Field>
+        <Button
+          onClick={() => void save()}
+          disabled={saving}
+          className={saved ? "animate-pop bg-oktext" : ""}
+        >
+          {saving ? "Saving…" : saved ? "Saved ✓" : "Save"}
+        </Button>
+      </div>
+      {err && <div className="mt-2 text-sm font-semibold text-badtext">{err}</div>}
     </Card>
   );
 }

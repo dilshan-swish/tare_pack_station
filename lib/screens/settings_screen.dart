@@ -9,6 +9,7 @@ import '../data/connection_issue.dart';
 import '../data/foodics_api.dart';
 import '../data/settings_store.dart';
 import '../models/foodics_brand.dart';
+import '../models/foodics_order_type.dart';
 import '../models/foodics_settings.dart';
 import '../models/headoffice_settings.dart';
 import '../models/menu_item.dart';
@@ -197,6 +198,8 @@ class _GeneralTab extends StatelessWidget {
             const SizedBox(height: 20),
           ],
           _FoodicsSection(foodics: settings.foodics),
+          const SizedBox(height: 20),
+          _OrderTypesSection(enabledTypes: settings.enabledOrderTypes),
           const SizedBox(height: 20),
           const _WeightModelSection(),
           const SizedBox(height: 20),
@@ -1581,6 +1584,152 @@ class _FoodicsSectionState extends ConsumerState<_FoodicsSection> {
   }
 
   static void _noop(String _) {}
+}
+
+// --------------------------------------------------------------------------
+// Order types shown in the queue
+// --------------------------------------------------------------------------
+
+/// Which Foodics order types (Dine In / Pick Up / Delivery / Drive Thru) show
+/// in the orders queue — multi-select, all four on by default. Toggling one
+/// takes effect immediately, no save button: the queue reads this same
+/// setting live via a derived provider (see filteredOrdersProvider), so
+/// there's nothing to "apply" separately.
+class _OrderTypesSection extends ConsumerWidget {
+  final Set<FoodicsOrderType> enabledTypes;
+  const _OrderTypesSection({required this.enabledTypes});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notifier = ref.read(settingsProvider.notifier);
+    return _SectionCard(
+      title: 'Order types to show',
+      subtitle: 'Hide order types this branch doesn\'t need cluttering the '
+          'queue — e.g. Drive Thru at a branch with no drive-thru lane. '
+          'Weighing and dispatch work exactly the same either way; this only '
+          'changes what shows up here.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              for (final type in FoodicsOrderType.values)
+                _OrderTypeTile(
+                  type: type,
+                  selected: enabledTypes.contains(type),
+                  onTap: () => notifier.toggleOrderType(
+                      type, !enabledTypes.contains(type)),
+                ),
+            ],
+          ),
+          if (enabledTypes.isEmpty) ...[
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(
+                color: AppColors.underBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.underText, width: 1.5),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.error_outline,
+                      size: 20, color: AppColors.underText),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Every order type is hidden — the queue will show '
+                      'nothing until at least one is turned back on.',
+                      style: AppTextStyles.body(
+                        size: 12.5,
+                        weight: FontWeight.w600,
+                        color: AppColors.underText,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _OrderTypeTile extends StatelessWidget {
+  final FoodicsOrderType type;
+  final bool selected;
+  final VoidCallback onTap;
+  const _OrderTypeTile({
+    required this.type,
+    required this.selected,
+    required this.onTap,
+  });
+
+  IconData get _icon => switch (type) {
+        FoodicsOrderType.dineIn => Icons.restaurant,
+        FoodicsOrderType.pickUp => Icons.shopping_bag_outlined,
+        FoodicsOrderType.delivery => Icons.delivery_dining,
+        FoodicsOrderType.driveThru => Icons.directions_car_filled_outlined,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: '${type.label}, ${selected ? 'shown' : 'hidden'}',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 44, minWidth: 44),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: selected ? AppColors.okGreenBg : AppColors.cream,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: AppColors.ink,
+                width: selected ? AppShapes.borderWidth : 1.5,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _checkbox(selected),
+                const SizedBox(width: 10),
+                Icon(_icon, size: 18, color: AppColors.ink),
+                const SizedBox(width: 8),
+                Text(type.label,
+                    style:
+                        AppTextStyles.body(size: 14.5, weight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _checkbox(bool on) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        color: on ? AppColors.ink : AppColors.cream,
+        border: Border.all(color: AppColors.ink, width: 2),
+      ),
+      child:
+          on ? const Icon(Icons.check, size: 13, color: AppColors.cream) : null,
+    );
+  }
 }
 
 class _Opt {

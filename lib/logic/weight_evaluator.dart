@@ -17,6 +17,23 @@ class ExpectedWeight {
   const ExpectedWeight({required this.grams, required this.combinedStdDev});
 }
 
+/// One bag's worth of packaging (bag material, napkins, sauce cups) — a
+/// property of how a brand packs, not of any one menu item (see
+/// Brand.BagIdealWeightG on the backend). [WeightEvaluator] multiplies this
+/// by however many bags an order actually took, rather than trying to
+/// predict bag count from the order's contents. `none` (all fields null)
+/// means the brand hasn't configured this yet, in which case both
+/// [WeightEvaluator] methods fall back to their pre-existing behavior.
+class BagPackaging {
+  final double? idealGrams;
+  final double? minGrams;
+  final double? maxGrams;
+  const BagPackaging({this.idealGrams, this.minGrams, this.maxGrams});
+  static const none = BagPackaging();
+  bool get isConfigured => idealGrams != null;
+  bool get hasRange => minGrams != null && maxGrams != null;
+}
+
 /// An explicit measured acceptance range for an order (grams), summed from the
 /// per-item Min/Max standards. Present only when every line has a range.
 class WeightRange {
@@ -78,24 +95,47 @@ class WeightEvaluator {
     Order order,
     Map<String, MenuItem> menuIndex, {
     ModifierCombinationIndex? combinationIndex,
+    BagPackaging bagPackaging = BagPackaging.none,
+    int bagCount = 1,
   }) {
     final combinations = combinationIndex ?? ModifierCombinationIndex.empty;
     double total = 0;
     // Standard deviations combine in quadrature (independent variances add).
     double variance = 0;
+    // Legacy per-item packaging sum — only used as a fallback below, for a
+    // brand that hasn't configured a bag range in the portal yet.
+    double perItemPackaging = 0;
 
     for (final line in order.items) {
       final menuItem = menuIndex[line.menuItemId];
       if (menuItem == null) continue;
 
-      total += menuItem.baseWeightGrams + menuItem.packagingWeightGrams;
+      total += menuItem.baseWeightGrams;
+      perItemPackaging += menuItem.packagingWeightGrams;
       variance += menuItem.baseWeightStdDev * menuItem.baseWeightStdDev;
 
-      for (final slot
-          in resolveSelectedModifiers(menuItem, line.selectedModifierIds, combinations)) {
+      for (final slot in [
+        ...resolveSelectedModifiers(menuItem, line.selectedModifierIds, combinations),
+        // Always-included components (a dip, a slaw) — nobody selects them,
+        // so they're never in the line's modifiers, but every order of this
+        // item is expected to carry them. See FixedInclusion.
+        ...resolveFixedInclusions(menuItem),
+      ]) {
         total += slot.weightG;
         variance += slot.weightStdDev * slot.weightStdDev;
       }
+    }
+
+    if (bagPackaging.isConfigured) {
+      total += bagPackaging.idealGrams! * bagCount;
+      if (bagPackaging.hasRange) {
+        // A rough stddev from the measured range (~4 sigma spans min..max),
+        // scaled by bag count since each captured bag adds its own variance.
+        final bagStdDev = (bagPackaging.maxGrams! - bagPackaging.minGrams!) / 4 * bagCount;
+        variance += bagStdDev * bagStdDev;
+      }
+    } else {
+      total += perItemPackaging;
     }
 
     return ExpectedWeight(grams: total, combinedStdDev: math.sqrt(variance));
@@ -111,6 +151,8 @@ class WeightEvaluator {
     Order order,
     Map<String, MenuItem> menuIndex, {
     ModifierCombinationIndex? combinationIndex,
+    BagPackaging bagPackaging = BagPackaging.none,
+    int bagCount = 1,
   }) {
     if (order.items.isEmpty) return null;
     final combinations = combinationIndex ?? ModifierCombinationIndex.empty;
@@ -121,13 +163,28 @@ class WeightEvaluator {
       ideal += mi.baseWeightGrams;
       min += mi.minWeightGrams!;
       max += mi.maxWeightGrams!;
-      for (final slot in resolveSelectedModifiers(mi, line.selectedModifierIds, combinations)) {
+      for (final slot in [
+        ...resolveSelectedModifiers(mi, line.selectedModifierIds, combinations),
+        ...resolveFixedInclusions(mi),
+      ]) {
         ideal += slot.weightG;
         // A slot without its own range (a plain modifier with no measured
         // range, or a combination override that only set a combined weight)
         // contributes a fixed amount to both ends.
         min += slot.hasRange ? slot.minWeightG! : slot.weightG;
         max += slot.hasRange ? slot.maxWeightG! : slot.weightG;
+      }
+    }
+    if (bagPackaging.isConfigured) {
+      ideal += bagPackaging.idealGrams! * bagCount;
+      if (bagPackaging.hasRange) {
+        min += bagPackaging.minGrams! * bagCount;
+        max += bagPackaging.maxGrams! * bagCount;
+      } else {
+        // No measured range for the bag yet — a fixed amount on both ends,
+        // same convention as a plain modifier with no range above.
+        min += bagPackaging.idealGrams! * bagCount;
+        max += bagPackaging.idealGrams! * bagCount;
       }
     }
     return WeightRange(idealGrams: ideal, minGrams: min, maxGrams: max);

@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { Check } from "lucide-react";
 import { api, reasonLabel, timeAgo, branchDisplayName } from "../api";
-import type { DeviceCreated, DeviceDetail, DeviceEventLogEntry, WeighEventEntry, MenuItem, Modifier } from "../types";
-import { parseWeighEventItems, parseUnconfiguredReasons } from "../types";
+import type { DeviceCreated, DeviceDetail, DeviceEventLogEntry, WeighEventEntry } from "../types";
 import {
   Card,
   Badge,
@@ -13,9 +11,9 @@ import {
   Button,
   StatusDot,
   ButtonSpinner,
-  Modal,
   DateRangeFilter,
   resolvePresetRange,
+  OrderBreakdownModal,
   type RangePresetKey,
 } from "../ui";
 import { askConfirm } from "../confirmDialog";
@@ -47,182 +45,6 @@ function formatTime(iso: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-// The full breakdown for one weigh — items, their modifiers, and the
-// expected/measured numbers — the same information the tablet itself showed
-// staff at the moment of weighing. Composition is only ever available for
-// events reported after that capture existed; older ones show a plain,
-// honest "not recorded" note rather than a blank or fabricated breakdown.
-function OrderBreakdownModal({
-  weigh,
-  brandId,
-  onClose,
-}: {
-  weigh: WeighEventEntry;
-  brandId?: number;
-  onClose: () => void;
-}) {
-  const items = parseWeighEventItems(weigh.itemsJson);
-  const unconfiguredReasons = parseUnconfiguredReasons(weigh.unconfiguredReasonsJson);
-
-  // For an unconfigured order, showing which lines DO have a weight set (not
-  // just which one doesn't) needs the brand's CURRENT catalog — the
-  // composition snapshot only ever carries names, never weights. Scoped to
-  // unconfigured orders specifically: every other verdict already has a
-  // computed measured/expected number, so this lookup would just be extra
-  // network weight for no new information.
-  const [configById, setConfigById] = useState<{
-    items: Map<string, MenuItem>;
-    modifiers: Map<string, Modifier>;
-  } | null>(null);
-
-  useEffect(() => {
-    if (weigh.verdict !== "unconfigured" || brandId == null) return;
-    let cancelled = false;
-    Promise.all([api.items(brandId), api.modifiers(brandId)])
-      .then(([menuItems, modifiers]) => {
-        if (cancelled) return;
-        setConfigById({
-          items: new Map(menuItems.map((mi) => [mi.foodicsProductId, mi])),
-          modifiers: new Map(modifiers.map((m) => [m.foodicsModifierId, m])),
-        });
-      })
-      .catch(() => {
-        // A failed lookup just means no ticks/weights show — the rest of the
-        // breakdown (already loaded) stays fully usable either way.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [weigh.verdict, brandId]);
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={weigh.orderLabel ?? (weigh.foodicsOrderId ? `Order ${weigh.foodicsOrderId}` : "Order breakdown")}
-      entrance="turn"
-      maxWidth="max-w-lg"
-    >
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {verdictBadge(weigh.verdict)}
-        <span className="font-mono text-xs text-muted">{formatTime(weigh.weighedAt)}</span>
-      </div>
-
-      {weigh.orderLabel && weigh.foodicsOrderId && (
-        <p className="-mt-3 mb-4 truncate font-mono text-[11px] text-muted" title={weigh.foodicsOrderId}>
-          {weigh.foodicsOrderId}
-        </p>
-      )}
-
-      <div className="mb-4 grid grid-cols-3 gap-2 rounded-xl border border-line bg-black/[0.02] p-3 text-center">
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Measured</div>
-          <div className="font-mono text-lg font-bold text-ink">{g(weigh.measuredG)}</div>
-        </div>
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Expected</div>
-          <div className="font-mono text-lg font-bold text-ink">
-            {weigh.expectedMinG != null && weigh.expectedMaxG != null
-              ? `${g(weigh.expectedMinG)}–${g(weigh.expectedMaxG)}`
-              : "—"}
-          </div>
-        </div>
-        <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Reason</div>
-          <div className="text-sm font-semibold text-ink">{weigh.overrideReason ?? "—"}</div>
-        </div>
-      </div>
-
-      {weigh.verdict === "unconfigured" && (
-        <div className="mb-4 rounded-xl border border-amber/40 bg-warnbg p-3">
-          <div className="text-sm font-bold text-ink">Why this couldn't be checked</div>
-          {unconfiguredReasons && unconfiguredReasons.length > 0 ? (
-            <ul className="mt-1.5 space-y-1">
-              {unconfiguredReasons.map((reason, i) => (
-                <li key={i} className="flex items-start gap-1.5 text-sm text-[#5c4413]">
-                  <span className="mt-0.5 text-[#8a5a10]">⚠</span>
-                  <span>{reason}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="mt-1 text-sm text-[#5c4413]">
-              This weigh happened before the app tracked exactly which item or modifier was
-              missing a weight — only that the order couldn't be fully checked.
-            </p>
-          )}
-          <p className="mt-2 text-xs text-[#5c4413]/80">
-            To fix this, set that item's or modifier's weight in{" "}
-            {brandId != null ? (
-              <Link to={`/brands/${brandId}/weights`} className="font-semibold underline decoration-dotted">
-                Brands → Weights
-              </Link>
-            ) : (
-              <span className="font-semibold">Brands → Weights</span>
-            )}
-            . Nothing else is needed — it takes effect the next time this item is ordered.
-          </p>
-        </div>
-      )}
-
-      {items === null ? (
-        <p className="text-sm text-muted">
-          Item breakdown wasn't recorded for this weigh (it happened before this app tracked
-          composition, or the order couldn't be resolved at the time).
-        </p>
-      ) : items.length === 0 ? (
-        <p className="text-sm text-muted">This order had no line items.</p>
-      ) : (
-        <ul className="divide-y divide-line rounded-xl border border-line">
-          {items.map((item, i) => {
-            const itemConfig = configById?.items.get(item.menuItemId);
-            return (
-              <li key={i} className="p-3">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="font-semibold text-ink">{item.name ?? item.menuItemId}</span>
-                  {itemConfig?.isConfigured && (
-                    <span
-                      className="inline-flex items-center gap-0.5 text-xs font-semibold text-oktext"
-                      title="This item's weight is configured"
-                    >
-                      <Check size={12} strokeWidth={3} /> {g(itemConfig.idealWeightG)}
-                    </span>
-                  )}
-                </div>
-                {item.modifiers && item.modifiers.length > 0 && (
-                  <ul className="mt-1.5 space-y-1 pl-3">
-                    {item.modifiers.map((mod, j) => {
-                      const modConfig = configById?.modifiers.get(mod.modifierId);
-                      return (
-                        <li key={j} className="flex flex-wrap items-center gap-1.5 text-sm text-muted">
-                          <span className="text-ink/30">+</span>
-                          {mod.name ?? mod.modifierId}
-                          {modConfig?.isConfigured && (
-                            <span
-                              className="inline-flex items-center gap-0.5 text-xs font-semibold text-oktext"
-                              title="This modifier's weight is configured"
-                            >
-                              <Check size={11} strokeWidth={3} /> {g(modConfig.weightG)}
-                            </span>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      <div className="mt-5 flex justify-end">
-        <Button onClick={onClose}>Close</Button>
-      </div>
-    </Modal>
-  );
 }
 
 export function DeviceDetailPage() {

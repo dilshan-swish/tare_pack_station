@@ -44,8 +44,9 @@ public class MenuController : ControllerBase
         var itemMods = await BrandsController.ItemModifierFoodicsIdsAsync(_db, brandId);
         if (hasModifiers.HasValue)
             items = items.Where(i => itemMods.ContainsKey(i.MenuItemId) == hasModifiers.Value).ToList();
+        var inclusions = await BrandsController.InclusionsByItemAsync(_db, brandId);
 
-        return Ok(items.Select(m => BrandsController.ToItemDto(m, itemMods)));
+        return Ok(items.Select(m => BrandsController.ToItemDto(m, itemMods, inclusions)));
     }
 
     /// <summary>The modifier groups linked to an item, with each group's weighable options.</summary>
@@ -96,7 +97,8 @@ public class MenuController : ControllerBase
         // "irrelevant" for this endpoint) silently wiped out `hasModifiers`
         // and made the "Modifiers — show" toggle disappear after every save.
         var itemMods = await BrandsController.ItemModifierFoodicsIdsAsync(_db, item.BrandId);
-        return Ok(BrandsController.ToItemDto(item, itemMods));
+        var inclusions = await BrandsController.InclusionsByItemAsync(_db, item.BrandId);
+        return Ok(BrandsController.ToItemDto(item, itemMods, inclusions));
     }
 
     /// <summary>
@@ -223,6 +225,116 @@ public class MenuController : ControllerBase
         if (min.HasValue && max.HasValue && max < min)
             return "Max weight must be greater than or equal to min weight.";
         if (weight.HasValue && ((min.HasValue && weight < min) || (max.HasValue && weight > max)))
+            return "Ideal weight must fall between min and max.";
+        return null;
+    }
+
+    // -------------------------------------------------------------------
+    // Always-included components — see docs/sql/19_menu_item_inclusions.sql.
+    // A part of the item a customer never picks (a ranch dip, a slaw), so
+    // Foodics never reports it and it cannot be a Modifier. The tablet adds
+    // every one of these to the expected weight for every order of the item,
+    // which is what lets a missing one trip the under-weight check instead
+    // of being averaged into the item's own Min/Max band.
+    // -------------------------------------------------------------------
+
+    /// <summary>One item's always-included components.</summary>
+    [HttpGet("items/{id:int}/inclusions")]
+    public async Task<ActionResult<IEnumerable<MenuItemInclusionDto>>> ItemInclusions(int id)
+    {
+        if (await _db.MenuItems.FindAsync(id) is null) return NotFound();
+        var rows = await _db.MenuItemInclusions
+            .Where(x => x.MenuItemId == id).OrderBy(x => x.Name).ToListAsync();
+        return Ok(rows.Select(BrandsController.ToInclusionDto));
+    }
+
+    /// <summary>Adds one always-included component to an item.</summary>
+    [HttpPost("items/{id:int}/inclusions")]
+    public async Task<ActionResult<MenuItemInclusionDto>> CreateInclusion(
+        int id, [FromBody] MenuItemInclusionUpsertDto body)
+    {
+        if (await _db.MenuItems.FindAsync(id) is null)
+            return NotFound(new { error = "Item not found." });
+
+        var name = (body.Name ?? "").Trim();
+        var error = ValidateInclusion(name, body.IdealWeightG, body.MinWeightG, body.MaxWeightG);
+        if (error != null) return BadRequest(new { error });
+
+        // Case-insensitive, matching the UNIQUE(MenuItemId, Name) constraint
+        // under SQL Server's default collation — caught here so a duplicate
+        // comes back as a readable message instead of a 500 from the index.
+        if (await _db.MenuItemInclusions.AnyAsync(x => x.MenuItemId == id && x.Name == name))
+            return Conflict(new { error = $"\"{name}\" is already an always-included component on this item." });
+
+        var row = new MenuItemInclusion
+        {
+            MenuItemId = id,
+            Name = name,
+            IdealWeightG = body.IdealWeightG,
+            MinWeightG = body.MinWeightG,
+            MaxWeightG = body.MaxWeightG,
+            UpdatedBy = body.UpdatedBy,
+            UpdatedAt = DateTime.UtcNow,
+        };
+        _db.MenuItemInclusions.Add(row);
+        await _db.SaveChangesAsync();
+        return Ok(BrandsController.ToInclusionDto(row));
+    }
+
+    /// <summary>Renames / re-weighs one always-included component.</summary>
+    [HttpPut("inclusions/{inclusionId:int}")]
+    public async Task<ActionResult<MenuItemInclusionDto>> UpdateInclusion(
+        int inclusionId, [FromBody] MenuItemInclusionUpsertDto body)
+    {
+        var row = await _db.MenuItemInclusions.FindAsync(inclusionId);
+        if (row is null) return NotFound();
+
+        var name = (body.Name ?? "").Trim();
+        var error = ValidateInclusion(name, body.IdealWeightG, body.MinWeightG, body.MaxWeightG);
+        if (error != null) return BadRequest(new { error });
+
+        if (await _db.MenuItemInclusions.AnyAsync(x =>
+                x.MenuItemId == row.MenuItemId && x.Name == name && x.InclusionId != inclusionId))
+            return Conflict(new { error = $"\"{name}\" is already an always-included component on this item." });
+
+        row.Name = name;
+        row.IdealWeightG = body.IdealWeightG;
+        row.MinWeightG = body.MinWeightG;
+        row.MaxWeightG = body.MaxWeightG;
+        row.UpdatedBy = body.UpdatedBy;
+        row.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+        return Ok(BrandsController.ToInclusionDto(row));
+    }
+
+    /// <summary>Removes an always-included component — the item's expected
+    /// weight stops counting it from the tablets' next config refresh.</summary>
+    [HttpDelete("inclusions/{inclusionId:int}")]
+    public async Task<IActionResult> DeleteInclusion(int inclusionId)
+    {
+        var row = await _db.MenuItemInclusions.FindAsync(inclusionId);
+        if (row is null) return NotFound();
+        _db.MenuItemInclusions.Remove(row);
+        await _db.SaveChangesAsync();
+        return NoContent();
+    }
+
+    // Unlike a modifier (where a negative weight legitimately means "No
+    // Onion" — weight REMOVED), an always-included component is a physical
+    // thing that ships in the bag, so its weight can only be positive.
+    internal static string? ValidateInclusion(string name, decimal? ideal, decimal? min, decimal? max)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "A name is required (e.g. \"Ranch\").";
+        // Maps to NVARCHAR(120) — rejected here so an oversized name is a
+        // readable 400 rather than a SQL truncation 500.
+        if (name.Length > 120)
+            return "Name must be 120 characters or fewer.";
+        if (ideal is < 0 || min is < 0 || max is < 0)
+            return "Weights cannot be negative.";
+        if (min.HasValue && max.HasValue && max < min)
+            return "Max weight must be greater than or equal to min weight.";
+        if (ideal.HasValue && ((min.HasValue && ideal < min) || (max.HasValue && ideal > max)))
             return "Ideal weight must fall between min and max.";
         return null;
     }

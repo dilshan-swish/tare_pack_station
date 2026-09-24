@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../logic/weight_evaluator.dart';
 import '../models/order.dart';
 import '../models/order_status.dart';
+import '../state/headoffice_menu_controller.dart';
 import '../state/menu_index_provider.dart';
 import '../state/orders_controller.dart';
 import '../state/settings_controller.dart';
@@ -60,14 +61,24 @@ final discrepancyEngineProvider = Provider<DiscrepancyEngine>((ref) {
 DiscrepancyResult analyzeDiscrepancy(
   WidgetRef ref,
   Order order,
-  double? measuredGrams,
-) {
+  double? measuredGrams, {
+  /// Must match whatever computeOrderMath used for this same order/reading —
+  /// otherwise the AI's off-weight gate silently drifts from the verdict
+  /// actually shown on the card once a brand configures a bag range.
+  int bagCount = 1,
+}) {
   if (measuredGrams == null) return DiscrepancyResult.none;
   try {
     final engine = ref.read(discrepancyEngineProvider);
     final menuIndex = ref.read(menuIndexProvider);
     final combinationIndex = ref.read(modifierCombinationIndexProvider);
     final tolerance = ref.read(settingsProvider).tolerance;
+    final headOffice = ref.read(headOfficeMenuProvider);
+    final bagPackaging = BagPackaging(
+      idealGrams: headOffice.bagIdealWeightGrams,
+      minGrams: headOffice.bagMinWeightGrams,
+      maxGrams: headOffice.bagMaxWeightGrams,
+    );
     // Only orders still sitting in the main queue (i.e. not yet dispatched)
     // are plausible "wrong bag" candidates — a dispatched order's bag is
     // already gone, so it can't be the one that ended up on the scale.
@@ -76,8 +87,8 @@ DiscrepancyResult analyzeDiscrepancy(
         .toList();
     // Use the explicit Min/Max range (BBT standards) when present so the AI's
     // off-weight gate matches the on/under/over verdict shown on the card.
-    final range =
-        const WeightEvaluator().rangeFor(order, menuIndex, combinationIndex: combinationIndex);
+    final range = const WeightEvaluator().rangeFor(order, menuIndex,
+        combinationIndex: combinationIndex, bagPackaging: bagPackaging, bagCount: bagCount);
     return engine.analyze(
       order: order,
       measuredGrams: measuredGrams,
@@ -87,6 +98,8 @@ DiscrepancyResult analyzeDiscrepancy(
       windowMinGrams: range?.minGrams,
       windowMaxGrams: range?.maxGrams,
       combinationIndex: combinationIndex,
+      bagPackaging: bagPackaging,
+      bagCount: bagCount,
     );
   } catch (e) {
     debugPrint('analyzeDiscrepancy failed: $e');

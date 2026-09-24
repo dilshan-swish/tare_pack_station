@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../logic/modifier_pairing.dart';
+import '../models/foodics_order_type.dart';
 import '../models/foodics_settings.dart';
 import '../models/headoffice_menu_cache.dart';
 import '../models/headoffice_settings.dart';
@@ -27,12 +28,20 @@ class AppSettings {
   final FoodicsSettings foodics;
   final HeadOfficeSettings headOffice;
 
+  /// Which Foodics order types show in the queue — every type by default, so
+  /// nothing is hidden until someone actively excludes one in Settings. An
+  /// order whose type isn't in this set never shows in "To Be Weighed"/"Ready
+  /// for Pickup"; an order with no recognized type at all is never affected
+  /// by this filter (see [FoodicsOrderType.fromCode]).
+  final Set<FoodicsOrderType> enabledOrderTypes;
+
   const AppSettings({
     required this.weightSourceType,
     required this.tolerance,
     required this.serial,
     required this.foodics,
     required this.headOffice,
+    required this.enabledOrderTypes,
   });
 
   AppSettings copyWith({
@@ -40,6 +49,7 @@ class AppSettings {
     SerialSettings? serial,
     FoodicsSettings? foodics,
     HeadOfficeSettings? headOffice,
+    Set<FoodicsOrderType>? enabledOrderTypes,
   }) {
     return AppSettings(
       weightSourceType: weightSourceType ?? this.weightSourceType,
@@ -47,6 +57,7 @@ class AppSettings {
       serial: serial ?? this.serial,
       foodics: foodics ?? this.foodics,
       headOffice: headOffice ?? this.headOffice,
+      enabledOrderTypes: enabledOrderTypes ?? this.enabledOrderTypes,
     );
   }
 
@@ -56,6 +67,7 @@ class AppSettings {
         serial: SerialSettings.defaults,
         foodics: FoodicsSettings.defaults,
         headOffice: HeadOfficeSettings.defaults,
+        enabledOrderTypes: FoodicsOrderType.values.toSet(),
       );
 }
 
@@ -64,6 +76,7 @@ class AppSettings {
 /// session rather than crashing on startup.
 class SettingsStore {
   static const _kWeightSource = 'weight_source_type';
+  static const _kEnabledOrderTypes = 'enabled_order_types';
   static const _kSerial = 'serial_settings';
   static const _kFoodics = 'foodics_settings';
   static const _kHeadOffice = 'headoffice_settings';
@@ -78,6 +91,9 @@ class SettingsStore {
       'headoffice_menu_branch_name_localized';
   static const _kHeadOfficeBranchOpeningFrom = 'headoffice_menu_branch_opening_from';
   static const _kHeadOfficeBranchOpeningTo = 'headoffice_menu_branch_opening_to';
+  static const _kHeadOfficeBagIdealWeightG = 'headoffice_menu_bag_ideal_weight_g';
+  static const _kHeadOfficeBagMinWeightG = 'headoffice_menu_bag_min_weight_g';
+  static const _kHeadOfficeBagMaxWeightG = 'headoffice_menu_bag_max_weight_g';
   static const _kHeadOfficeModifierCombinations = 'headoffice_menu_modifier_combinations';
   static const _kRecentlyDispatched = 'recently_dispatched_orders';
   static const _kWeightModelVersion = 'weight_model_version';
@@ -99,6 +115,10 @@ class SettingsStore {
 
       final weightSource = WeightSourceTypeX.fromStorage(
         prefs.getString(_kWeightSource),
+      );
+
+      final enabledOrderTypes = _decodeEnabledOrderTypes(
+        prefs.getString(_kEnabledOrderTypes),
       );
 
       final serial = _decode(
@@ -125,6 +145,7 @@ class SettingsStore {
         serial: serial,
         foodics: foodics,
         headOffice: headOffice,
+        enabledOrderTypes: enabledOrderTypes,
       );
     } catch (e) {
       debugPrint('SettingsStore.load failed, using defaults: $e');
@@ -136,6 +157,34 @@ class SettingsStore {
       _write(_kWeightSource, () async {
         await _prefs!.setString(_kWeightSource, type.storageKey);
       });
+
+  /// Persists which order types show in the queue. An empty set is a valid,
+  /// deliberate choice (every type turned off) and is stored/restored as-is —
+  /// only a value that was NEVER saved falls back to "every type enabled".
+  Future<void> saveEnabledOrderTypes(Set<FoodicsOrderType> types) =>
+      _write(_kEnabledOrderTypes, () async {
+        await _prefs!.setString(
+          _kEnabledOrderTypes,
+          types.map((t) => t.code).join(','),
+        );
+      });
+
+  /// Missing preference (never saved) -> every type enabled, matching the
+  /// pre-filter behavior so upgrading never silently hides anything. Present
+  /// but empty -> the user's own deliberate "hide everything" choice,
+  /// preserved exactly. Any unrecognized/corrupt code is just dropped rather
+  /// than failing the whole decode.
+  Set<FoodicsOrderType> _decodeEnabledOrderTypes(String? raw) {
+    if (raw == null) return FoodicsOrderType.values.toSet();
+    if (raw.isEmpty) return const {};
+    final result = <FoodicsOrderType>{};
+    for (final part in raw.split(',')) {
+      final code = int.tryParse(part.trim());
+      final type = code == null ? null : FoodicsOrderType.fromCode(code);
+      if (type != null) result.add(type);
+    }
+    return result;
+  }
 
   Future<void> saveSerial(SerialSettings s) => _write(_kSerial, () async {
         await _prefs!.setString(_kSerial, jsonEncode(s.toJson()));
@@ -166,6 +215,9 @@ class SettingsStore {
     String? branchOpeningFrom,
     String? branchOpeningTo,
     List<ModifierCombinationWeight> modifierCombinations = const [],
+    double? bagIdealWeightGrams,
+    double? bagMinWeightGrams,
+    double? bagMaxWeightGrams,
   }) =>
       _write(_kHeadOfficeMenu, () async {
         await _prefs!.setString(
@@ -208,6 +260,21 @@ class SettingsStore {
           await _prefs!.setString(_kHeadOfficeBranchOpeningTo, branchOpeningTo);
         } else {
           await _prefs!.remove(_kHeadOfficeBranchOpeningTo);
+        }
+        if (bagIdealWeightGrams != null) {
+          await _prefs!.setDouble(_kHeadOfficeBagIdealWeightG, bagIdealWeightGrams);
+        } else {
+          await _prefs!.remove(_kHeadOfficeBagIdealWeightG);
+        }
+        if (bagMinWeightGrams != null) {
+          await _prefs!.setDouble(_kHeadOfficeBagMinWeightG, bagMinWeightGrams);
+        } else {
+          await _prefs!.remove(_kHeadOfficeBagMinWeightG);
+        }
+        if (bagMaxWeightGrams != null) {
+          await _prefs!.setDouble(_kHeadOfficeBagMaxWeightG, bagMaxWeightGrams);
+        } else {
+          await _prefs!.remove(_kHeadOfficeBagMaxWeightG);
         }
       });
 
@@ -252,6 +319,9 @@ class SettingsStore {
         branchNameLocalized: _prefs!.getString(_kHeadOfficeBranchNameLocalized),
         branchOpeningFrom: _prefs!.getString(_kHeadOfficeBranchOpeningFrom),
         branchOpeningTo: _prefs!.getString(_kHeadOfficeBranchOpeningTo),
+        bagIdealWeightGrams: _prefs!.getDouble(_kHeadOfficeBagIdealWeightG),
+        bagMinWeightGrams: _prefs!.getDouble(_kHeadOfficeBagMinWeightG),
+        bagMaxWeightGrams: _prefs!.getDouble(_kHeadOfficeBagMaxWeightG),
       );
     } catch (e) {
       debugPrint('SettingsStore.loadHeadOfficeMenu failed: $e');

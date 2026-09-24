@@ -41,6 +41,11 @@ class HeadOfficeMenuCache {
   final String? branchOpeningFrom;
   final String? branchOpeningTo;
 
+  /// One bag's worth of packaging — see HeadOfficeConfig.bagIdealWeightGrams.
+  final double? bagIdealWeightGrams;
+  final double? bagMinWeightGrams;
+  final double? bagMaxWeightGrams;
+
   const HeadOfficeMenuCache({
     required this.items,
     this.modifierCombinations = const [],
@@ -53,5 +58,8 @@ class HeadOfficeMenuCache {
     this.branchNameLocalized,
     this.branchOpeningFrom,
     this.branchOpeningTo,
+    this.bagIdealWeightGrams,
+    this.bagMinWeightGrams,
+    this.bagMaxWeightGrams,
   });
 }

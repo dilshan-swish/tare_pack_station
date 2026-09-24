@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SwishWeighing.Api.Data;
@@ -46,6 +47,10 @@ public class WeighEventsController : ControllerBase
             return BadRequest(new { error = "overrideReason must be 128 characters or fewer." });
         if (body.OrderLabel?.Length > 64)
             return BadRequest(new { error = "orderLabel must be 64 characters or fewer." });
+        if (body.AggregatorName?.Length > 64)
+            return BadRequest(new { error = "aggregatorName must be 64 characters or fewer." });
+        if (body.AggregatorRef?.Length > 64)
+            return BadRequest(new { error = "aggregatorRef must be 64 characters or fewer." });
 
         // Composition is optional and, in the worst case (a huge order),
         // still bounded — reject anything absurd cleanly rather than storing
@@ -89,6 +94,8 @@ public class WeighEventsController : ControllerBase
             DeviceId = deviceId,
             FoodicsOrderId = body.FoodicsOrderId,
             OrderLabel = body.OrderLabel,
+            AggregatorName = body.AggregatorName,
+            AggregatorRef = body.AggregatorRef,
             ExpectedMinG = body.ExpectedMinG,
             ExpectedMaxG = body.ExpectedMaxG,
             MeasuredG = body.MeasuredG,
@@ -156,35 +163,68 @@ public class WeighEventsController : ControllerBase
         return Ok(rows.Select(e => new WeighEventEntryDto(
             e.EventId, e.DeviceId, e.FoodicsOrderId, e.ExpectedMinG, e.ExpectedMaxG, e.MeasuredG,
             e.Verdict, e.OverrideReason, e.ItemMissing, e.WeighedAt, e.ItemsJson, e.OrderLabel,
-            e.UnconfiguredReasonsJson)));
+            e.UnconfiguredReasonsJson, e.AggregatorName, e.AggregatorRef)));
+    }
+
+    /// <summary>
+    /// One weigh event's full detail — including its raw item/modifier
+    /// composition — for the Weigh History page's "View breakdown" action.
+    /// That page's own list (Browse above) deliberately returns only a
+    /// lightweight summary per row (it can already scan up to 20,000
+    /// candidates when filtering by item), so this is the on-demand fetch for
+    /// the ONE row someone actually wants to inspect, reusing the exact same
+    /// detail shape the per-device dashboard already shows via List above.
+    /// Portal-only, like Export/Browse/TrainingPreview.
+    /// </summary>
+    [HttpGet("{id:long}")]
+    public async Task<ActionResult<WeighEventEntryDto>> GetById(long id)
+    {
+        if (HttpContext.Items["DeviceId"] is int)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Not available to a device key." });
+
+        var e = await _db.WeighEvents.FindAsync(id);
+        if (e is null) return NotFound(new { error = "Weigh event not found." });
+
+        return Ok(new WeighEventEntryDto(
+            e.EventId, e.DeviceId, e.FoodicsOrderId, e.ExpectedMinG, e.ExpectedMaxG, e.MeasuredG,
+            e.Verdict, e.OverrideReason, e.ItemMissing, e.WeighedAt, e.ItemsJson, e.OrderLabel,
+            e.UnconfiguredReasonsJson, e.AggregatorName, e.AggregatorRef));
     }
 
     /// <summary>
     /// Every weighed order, filterable by brand(s), branch(es), device,
-    /// verdict(s), and date range, as a CSV — either one row per order
-    /// (<c>format=orders</c>, the aggregate view) or one row per
+    /// verdict(s), item(s), and date range, as a CSV — either one row per
+    /// order (<c>format=orders</c>, the aggregate view) or one row per
     /// order/item/modifier line (<c>format=items</c>, the "tidy" long format
     /// suited to training a weight-prediction model or item-level analytics
     /// without any JSON parsing downstream). "Weighed" is automatic here:
     /// this table only ever contains orders that actually went through
     /// Confirm &amp; Dispatch, so no extra filtering is needed for that.
     /// Portal-only — a tablet's own device key is scoped to its own events
-    /// via List above, not this bulk export.
+    /// via List above, not this bulk export. Always matches whatever the
+    /// Weigh History page currently shows — see Browse below, which applies
+    /// the exact same filters (including itemIds and itemCount).
     /// </summary>
     [HttpGet("export")]
     public async Task<IActionResult> Export(
         [FromQuery] int? deviceId, [FromQuery] string? brandIds, [FromQuery] string? branchIds,
         [FromQuery] string? verdicts, [FromQuery] DateTime? from, [FromQuery] DateTime? to,
-        [FromQuery] string format = "orders")
+        [FromQuery] string? itemIds, [FromQuery] int? itemCount, [FromQuery] string format = "orders",
+        [FromQuery] string fileType = "csv", [FromQuery] string? sortBy = null, [FromQuery] string? sortDir = null)
     {
         if (HttpContext.Items["DeviceId"] is int)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Not available to a device key." });
         if (format != "orders" && format != "items")
             return BadRequest(new { error = "format must be 'orders' or 'items'." });
+        if (fileType != "csv" && fileType != "xlsx")
+            return BadRequest(new { error = "fileType must be 'csv' or 'xlsx'." });
+        if (itemCount is < 0)
+            return BadRequest(new { error = "itemCount must be 0 or greater." });
 
         var brandIdList = ParseIntList(brandIds);
         var branchIdList = ParseIntList(branchIds);
         var verdictList = ParseLowerList(verdicts);
+        var itemIdList = ParseIntList(itemIds);
 
         var q = _db.WeighEvents.AsQueryable();
         if (deviceId.HasValue) q = q.Where(e => e.DeviceId == deviceId.Value);
@@ -204,18 +244,438 @@ public class WeighEventsController : ControllerBase
             q = q.Where(e => branchesForBrands.Contains(e.BranchId));
         }
 
-        var rows = await q.OrderBy(e => e.WeighedAt).ToListAsync();
+        // Unsorted here — the explicit ApplySort below (after every filter,
+        // so it's the final step) is this endpoint's one real ordering; the
+        // old unconditional `.OrderBy(e => e.WeighedAt)` moved into that same
+        // call as its default, so behavior for an unspecified sort is unchanged.
+        var rows = await q.ToListAsync();
         var branches = await _db.Branches.ToDictionaryAsync(b => b.BranchId);
         var brands = await _db.Brands.ToDictionaryAsync(b => b.BrandId);
         var deviceLabels = await _db.Devices.ToDictionaryAsync(d => d.DeviceId, d => d.Label);
 
-        var csv = format == "items"
-            ? BuildItemLevelCsv(rows, branches, brands, deviceLabels)
-            : BuildOrderLevelCsv(rows, branches, brands, deviceLabels);
+        // Cheap — no brand lookup needed — so applied before the itemIds
+        // resolve below to shrink the row set first.
+        if (itemCount.HasValue)
+            rows = rows.Where(e => GetItemLineCount(e) == itemCount.Value).ToList();
 
-        var bytes = Encoding.UTF8.GetBytes(csv);
-        var fileName = $"weighed-{format}-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv";
-        return File(bytes, "text/csv", fileName);
+        // Item filtering needs each order's resolved composition (ItemsJson
+        // stores raw Foodics ids, not the internal MenuItemId the portal's
+        // item picker uses) — not expressible as a SQL predicate, so resolve
+        // the already brand/branch/date/verdict-narrowed rows and keep only
+        // the ones containing at least one selected item.
+        if (itemIdList != null)
+        {
+            var branchToBrandForItems = branches.ToDictionary(kv => kv.Key, kv => kv.Value.BrandId);
+            var lookupsForItems = await LoadBrandLookupsAsync(
+                rows.Select(e => branchToBrandForItems.GetValueOrDefault(e.BranchId)).Distinct());
+            var itemKeys = itemIdList.Select(id => $"item:{id}").ToHashSet();
+            rows = rows.Where(e =>
+            {
+                var (components, _) = ResolveOrderComponents(e, branchToBrandForItems, lookupsForItems);
+                return components.Any(c => c.Type == "item" && itemKeys.Contains(c.Key));
+            }).ToList();
+        }
+
+        // Default (nothing specified) stays this endpoint's original
+        // chronological-ascending order — the portal always sends its
+        // current on-screen sort explicitly, so this default only matters
+        // for any other caller of this URL.
+        var sortKey = NormalizeSortBy(sortBy);
+        var desc = (sortDir?.ToLowerInvariant() ?? "asc") == "desc";
+        rows = ApplySort(rows, e => e, sortKey, desc, branches, deviceLabels);
+
+        var (headers, table) = format == "items"
+            ? BuildItemLevelTable(rows, branches, brands, deviceLabels)
+            : BuildOrderLevelTable(rows, branches, brands, deviceLabels);
+
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        if (fileType == "xlsx")
+        {
+            var xlsxBytes = TableToXlsx(format == "items" ? "Item-level detail" : "Order summary", headers, table);
+            return File(xlsxBytes,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                $"weighed-{format}-{stamp}.xlsx");
+        }
+        var csvBytes = Encoding.UTF8.GetBytes(TableToCsv(headers, table));
+        return File(csvBytes, "text/csv", $"weighed-{format}-{stamp}.csv");
+    }
+
+    /// <summary>
+    /// Paginated, richly-filterable weigh events for the portal's Weigh
+    /// History page: brand(s), branch(es), device, verdict(s), date range,
+    /// item(s) — orders containing ANY of the given menu items — and
+    /// itemCount (orders whose composition has EXACTLY this many item
+    /// lines). Distinct from List (device-scoped, for the tablet) and
+    /// TrainingPreview (training-specific "clean vs excluded" framing) —
+    /// this is the general-purpose operational browser, with Export above as
+    /// its matching full-data download.
+    /// </summary>
+    [HttpGet("browse")]
+    public async Task<ActionResult<WeighHistoryResultDto>> Browse(
+        [FromQuery] string? brandIds, [FromQuery] string? branchIds, [FromQuery] int? deviceId,
+        [FromQuery] string? verdicts, [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+        [FromQuery] string? itemIds, [FromQuery] int? itemCount,
+        [FromQuery] string? sortBy, [FromQuery] string? sortDir,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 25)
+    {
+        if (HttpContext.Items["DeviceId"] is int)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Not available to a device key." });
+        if (itemCount is < 0)
+            return BadRequest(new { error = "itemCount must be 0 or greater." });
+
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
+        var (matchedBranches, branchError) = await ResolveMatchedBranchesAsync(brandIds, branchIds);
+        if (branchError != null) return BadRequest(new { error = branchError });
+        var matchedBranchIds = matchedBranches.Select(b => b.BranchId).ToList();
+        var emptyVerdictCounts = new WeighHistoryVerdictCountsDto(0, 0, 0, 0, 0);
+        if (matchedBranchIds.Count == 0)
+            return Ok(new WeighHistoryResultDto(0, Array.Empty<WeighHistoryRowDto>(), emptyVerdictCounts));
+
+        var verdictList = ParseLowerList(verdicts);
+        var itemIdList = ParseIntList(itemIds);
+        var sortKey = NormalizeSortBy(sortBy);
+        var desc = (sortDir?.ToLowerInvariant() ?? "desc") == "desc";
+        // The one case that can stay a pure SQL Skip/Take with no in-memory
+        // pass at all — every other sort needs branch/device name lookups
+        // (or just a well-defined tie-break shared with Export) that only
+        // exist as dictionaries here, see ApplySort.
+        var isPlainNewestFirst = sortKey == "weighedat" && desc;
+
+        var q = _db.WeighEvents.Where(e => matchedBranchIds.Contains(e.BranchId));
+        if (deviceId.HasValue) q = q.Where(e => e.DeviceId == deviceId.Value);
+        if (from.HasValue) q = q.Where(e => e.WeighedAt >= from.Value);
+        if (to.HasValue) q = q.Where(e => e.WeighedAt <= to.Value);
+        if (verdictList != null) q = q.Where(e => verdictList.Contains(e.Verdict.ToLower()));
+
+        var branchToBrand = matchedBranches.ToDictionary(b => b.BranchId, b => b.BrandId);
+        var brandsById = await _db.Brands.ToDictionaryAsync(b => b.BrandId);
+        var branchesById = matchedBranches.ToDictionary(b => b.BranchId);
+        var deviceLabels = await _db.Devices.ToDictionaryAsync(d => d.DeviceId, d => d.Label);
+        var lookups = await LoadBrandLookupsAsync(matchedBranches.Select(b => b.BrandId).Distinct());
+
+        // Item filtering needs each candidate's resolved composition, which
+        // only exists once the row is loaded — capped so a request with
+        // almost no other filter can't force an unbounded in-memory scan.
+        // Every OTHER sort key needs the same in-memory pass for the same
+        // reason (branch/device names, or just ApplySort's one shared
+        // implementation — see its own comment), so the same cap applies
+        // there too.
+        const int maxScan = 20_000;
+
+        if (itemIdList == null && !itemCount.HasValue && isPlainNewestFirst)
+        {
+            // Neither item filter nor a non-default sort is active — page
+            // directly in SQL, cheap regardless of how much history exists.
+            // `q` here already has every active filter applied (branch,
+            // device, date, verdict), so this breakdown is exactly the
+            // population "N orders match" describes — never a separately-
+            // scoped "overall" number.
+            var total = await q.CountAsync();
+            var verdictGroups = await q.GroupBy(e => e.Verdict.ToLower())
+                .Select(g => new { Verdict = g.Key, Count = g.Count() })
+                .ToListAsync();
+            int CountFor(string verdict) => verdictGroups.FirstOrDefault(g => g.Verdict == verdict)?.Count ?? 0;
+            var pageCounts = new WeighHistoryVerdictCountsDto(
+                total, CountFor("onweight"), CountFor("under"), CountFor("over"), CountFor("unconfigured"));
+
+            var pageRows = await q.OrderByDescending(e => e.WeighedAt)
+                .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
+            return Ok(new WeighHistoryResultDto(total, pageRows.Select(e =>
+                ToBrowseRow(e, branchToBrand, branchesById, brandsById, deviceLabels, lookups)).ToList(),
+                pageCounts));
+        }
+
+        if (itemIdList == null && !itemCount.HasValue)
+        {
+            // A non-default sort, but no item filter — still bounded by the
+            // same cap as the item-filter path below, for the same reason
+            // (everything has to come into memory to sort it).
+            var total = await q.CountAsync();
+            if (total > maxScan)
+                return BadRequest(new
+                {
+                    error = $"That's {total:N0} matching orders — narrow the date range or branches first " +
+                        $"(sorting by anything other than newest-first is capped at {maxScan:N0} rows)."
+                });
+            var verdictGroups = await q.GroupBy(e => e.Verdict.ToLower())
+                .Select(g => new { Verdict = g.Key, Count = g.Count() })
+                .ToListAsync();
+            int CountFor(string verdict) => verdictGroups.FirstOrDefault(g => g.Verdict == verdict)?.Count ?? 0;
+            var pageCounts = new WeighHistoryVerdictCountsDto(
+                total, CountFor("onweight"), CountFor("under"), CountFor("over"), CountFor("unconfigured"));
+
+            var allRows = await q.ToListAsync();
+            var sortedRows = ApplySort(allRows, e => e, sortKey, desc, branchesById, deviceLabels);
+            var pageRows = sortedRows.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            return Ok(new WeighHistoryResultDto(total, pageRows.Select(e =>
+                ToBrowseRow(e, branchToBrand, branchesById, brandsById, deviceLabels, lookups)).ToList(),
+                pageCounts));
+        }
+
+        var candidateCount = await q.CountAsync();
+        if (candidateCount > maxScan)
+            return BadRequest(new
+            {
+                error = $"That's {candidateCount:N0} rows before the item filter — narrow the date range or " +
+                    $"branches first (searching by item is capped at {maxScan:N0} candidate rows)."
+            });
+
+        var candidates = await q.ToListAsync();
+        var itemKeys = itemIdList?.Select(id => $"item:{id}").ToHashSet();
+        var matched = new List<(WeighEvent Event, List<TrainingComponentDto> Components)>();
+        foreach (var e in candidates)
+        {
+            // Cheapest check first, so a non-matching row skips the (pricier)
+            // component resolution below entirely.
+            if (itemCount.HasValue && GetItemLineCount(e) != itemCount.Value) continue;
+            var (components, _) = ResolveOrderComponents(e, branchToBrand, lookups);
+            if (itemKeys != null && !components.Any(c => c.Type == "item" && itemKeys.Contains(c.Key)))
+                continue;
+            matched.Add((e, components));
+        }
+
+        // Same population as `matched.Count` (the "N orders match" figure) —
+        // computed in-memory since `matched` is already fully resolved and
+        // filtered (branch/device/date/verdict/items/itemCount all applied).
+        var verdictCounts = new WeighHistoryVerdictCountsDto(
+            matched.Count,
+            matched.Count(m => m.Event.Verdict.ToLower() == "onweight"),
+            matched.Count(m => m.Event.Verdict.ToLower() == "under"),
+            matched.Count(m => m.Event.Verdict.ToLower() == "over"),
+            matched.Count(m => m.Event.Verdict.ToLower() == "unconfigured"));
+
+        var sortedMatched = ApplySort(matched, m => m.Event, sortKey, desc, branchesById, deviceLabels);
+        var pageMatched = sortedMatched.Skip((page - 1) * pageSize).Take(pageSize).ToList();
+        return Ok(new WeighHistoryResultDto(matched.Count, pageMatched.Select(m =>
+            ToBrowseRow(m.Event, branchToBrand, branchesById, brandsById, deviceLabels, lookups, m.Components)).ToList(),
+            verdictCounts));
+    }
+
+    /// <summary>
+    /// Every weighed order matching EXACTLY the same filters as Browse
+    /// (brand(s), branch(es), device, verdict(s), date range, item(s),
+    /// itemCount) — but unpaginated, lightweight points for the portal's
+    /// Expected-vs-Measured scatter chart rather than display rows. Two
+    /// separate caps: the same 20,000-candidate scan cap Browse uses when an
+    /// item filter needs resolving, and a much smaller 5,000-point plot cap
+    /// (a scatter with more points than that stops being readable anyway —
+    /// narrowing the filters is the right fix, not shipping more data the
+    /// chart can't usefully show).
+    /// </summary>
+    [HttpGet("scatter")]
+    public async Task<ActionResult<WeighScatterResultDto>> Scatter(
+        [FromQuery] string? brandIds, [FromQuery] string? branchIds, [FromQuery] int? deviceId,
+        [FromQuery] string? verdicts, [FromQuery] DateTime? from, [FromQuery] DateTime? to,
+        [FromQuery] string? itemIds, [FromQuery] int? itemCount)
+    {
+        if (HttpContext.Items["DeviceId"] is int)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Not available to a device key." });
+        if (itemCount is < 0)
+            return BadRequest(new { error = "itemCount must be 0 or greater." });
+
+        var (matchedBranches, branchError) = await ResolveMatchedBranchesAsync(brandIds, branchIds);
+        if (branchError != null) return BadRequest(new { error = branchError });
+        var matchedBranchIds = matchedBranches.Select(b => b.BranchId).ToList();
+        if (matchedBranchIds.Count == 0)
+            return Ok(new WeighScatterResultDto(0, 0, Array.Empty<WeighScatterPointDto>()));
+
+        var verdictList = ParseLowerList(verdicts);
+        var itemIdList = ParseIntList(itemIds);
+
+        var q = _db.WeighEvents.Where(e => matchedBranchIds.Contains(e.BranchId));
+        if (deviceId.HasValue) q = q.Where(e => e.DeviceId == deviceId.Value);
+        if (from.HasValue) q = q.Where(e => e.WeighedAt >= from.Value);
+        if (to.HasValue) q = q.Where(e => e.WeighedAt <= to.Value);
+        if (verdictList != null) q = q.Where(e => verdictList.Contains(e.Verdict.ToLower()));
+
+        const int maxScan = 20_000;
+        const int maxPoints = 5_000;
+
+        // Needed for every point's BrandCode below, not just the item-filter
+        // path — cheap (brand rows only), unlike the full per-order component
+        // resolution that path does.
+        var branchToBrandAll = matchedBranches.ToDictionary(b => b.BranchId, b => b.BrandId);
+        var brandCodesById = await _db.Brands
+            .Where(b => matchedBranches.Select(mb => mb.BrandId).Distinct().Contains(b.BrandId))
+            .ToDictionaryAsync(b => b.BrandId, b => b.Code);
+
+        List<WeighEvent> matchedEvents;
+        if (itemIdList == null && !itemCount.HasValue)
+        {
+            var candidateCount = await q.CountAsync();
+            if (candidateCount > maxScan)
+                return BadRequest(new
+                {
+                    error = $"That's {candidateCount:N0} matching orders — narrow the date range or branches " +
+                        $"first (the chart is capped at {maxScan:N0} candidate rows)."
+                });
+            matchedEvents = await q.ToListAsync();
+        }
+        else
+        {
+            var candidateCount = await q.CountAsync();
+            if (candidateCount > maxScan)
+                return BadRequest(new
+                {
+                    error = $"That's {candidateCount:N0} rows before the item filter — narrow the date range or " +
+                        $"branches first (searching by item is capped at {maxScan:N0} candidate rows)."
+                });
+
+            var lookups = await LoadBrandLookupsAsync(matchedBranches.Select(b => b.BrandId).Distinct());
+            var candidates = await q.ToListAsync();
+            var itemKeys = itemIdList?.Select(id => $"item:{id}").ToHashSet();
+            matchedEvents = new List<WeighEvent>();
+            foreach (var e in candidates)
+            {
+                if (itemCount.HasValue && GetItemLineCount(e) != itemCount.Value) continue;
+                if (itemKeys != null)
+                {
+                    var (components, _) = ResolveOrderComponents(e, branchToBrandAll, lookups);
+                    if (!components.Any(c => c.Type == "item" && itemKeys.Contains(c.Key))) continue;
+                }
+                matchedEvents.Add(e);
+            }
+        }
+
+        var points = new List<WeighScatterPointDto>();
+        var excluded = 0;
+        foreach (var e in matchedEvents)
+        {
+            if (e.ExpectedMinG is null || e.ExpectedMaxG is null || e.MeasuredG is null) { excluded++; continue; }
+            var brandId = branchToBrandAll.GetValueOrDefault(e.BranchId);
+            points.Add(new WeighScatterPointDto(e.EventId, e.ExpectedMinG.Value, e.ExpectedMaxG.Value,
+                e.MeasuredG.Value, e.Verdict, brandCodesById.GetValueOrDefault(brandId)));
+        }
+
+        if (points.Count > maxPoints)
+            return BadRequest(new
+            {
+                error = $"That's {points.Count:N0} plottable orders — narrow your filters first (the chart is " +
+                    $"capped at {maxPoints:N0} points so it stays readable)."
+            });
+
+        return Ok(new WeighScatterResultDto(points.Count, excluded, points));
+    }
+
+    /// <summary>The number of item lines in one weigh event's composition
+    /// snapshot (matches the count behind ToBrowseRow's own ItemNames column)
+    /// — cheap on purpose: unlike the itemIds filter, a line count needs no
+    /// brand/catalog lookup at all, just the raw ItemsJson. Null (never 0)
+    /// when there's no parseable composition — an order with unknown
+    /// composition can't be confirmed to match any specific count, so the
+    /// item-count filter below excludes it rather than guessing.</summary>
+    private static int? GetItemLineCount(WeighEvent e)
+    {
+        if (string.IsNullOrEmpty(e.ItemsJson)) return null;
+        try
+        {
+            var items = JsonSerializer.Deserialize<List<WeighEventItemDto>>(e.ItemsJson, ItemsJsonReadOptions);
+            return items?.Count;
+        }
+        catch (JsonException)
+        {
+            return null; // malformed old data — treated as "unknown", same as elsewhere in this file
+        }
+    }
+
+    /// <summary>Builds one Weigh History row. [components], when supplied,
+    /// skips re-resolving the order (the item-filter path in Browse above
+    /// already resolved every candidate once to filter by item).</summary>
+    private WeighHistoryRowDto ToBrowseRow(
+        WeighEvent e, Dictionary<int, int> branchToBrand, Dictionary<int, Branch> branchesById,
+        Dictionary<int, Brand> brandsById, Dictionary<int, string> deviceLabels,
+        Dictionary<int, BrandLookup> lookups, List<TrainingComponentDto>? components = null)
+    {
+        var brandId = branchToBrand.GetValueOrDefault(e.BranchId);
+        components ??= ResolveOrderComponents(e, branchToBrand, lookups).Components;
+        // "unmapped" also covers unmapped MODIFIERS (Key "unmapped_modifier:…")
+        // — only the item-level ones belong in this item-names summary.
+        var itemNames = components
+            .Where(c => c.Type == "item" || (c.Type == "unmapped" && c.Key.StartsWith("unmapped_item:")))
+            .Select(c => c.Label).ToList();
+        return new WeighHistoryRowDto(
+            e.EventId, e.WeighedAt, brandsById.GetValueOrDefault(brandId)?.Code,
+            branchesById.GetValueOrDefault(e.BranchId)?.Name,
+            e.DeviceId.HasValue ? deviceLabels.GetValueOrDefault(e.DeviceId.Value) : null,
+            e.OrderLabel, e.ExpectedMinG, e.ExpectedMaxG, e.MeasuredG, e.Verdict, e.OverrideReason, itemNames);
+    }
+
+    /// <summary>
+    /// Permanently deletes every weigh event for the given branch(es) — the
+    /// portal's "Clear weigh events" tool. Branch ids are required and never
+    /// implied, so clearing every branch means selecting every branch
+    /// explicitly rather than one "delete everything" shortcut. Portal-only,
+    /// same as Export — there is no confirmation step here beyond the
+    /// portal's own dialog, since this endpoint has no way to ask the person
+    /// twice itself.
+    /// </summary>
+    [HttpPost("bulk-delete")]
+    public async Task<IActionResult> BulkDelete([FromBody] BulkDeleteWeighEventsDto body)
+    {
+        if (HttpContext.Items["DeviceId"] is int)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Not available to a device key." });
+        var ids = body.BranchIds?.Distinct().ToList() ?? [];
+        if (ids.Count == 0)
+            return BadRequest(new { error = "At least one branchId is required." });
+
+        var deleted = await _db.WeighEvents.Where(e => ids.Contains(e.BranchId)).ExecuteDeleteAsync();
+        return Ok(new { deletedCount = deleted, branchIds = ids });
+    }
+
+    /// Every column the Weigh History table (and its export) can be sorted
+    /// by. Kept as one source of truth so Browse and Export can never
+    /// recognize a different set of keys from each other.
+    private static readonly HashSet<string> ValidSortKeys =
+        new() { "weighedat", "branch", "device", "expected", "measured", "deviation", "verdict", "overridereason" };
+
+    /// An unrecognized or missing key always falls back to "weighedat" rather
+    /// than erroring — this only ever comes from the portal's own UI, so a
+    /// stale/mistyped value should degrade gracefully, not break the page.
+    private static string NormalizeSortBy(string? sortBy)
+    {
+        var s = sortBy?.Trim().ToLowerInvariant();
+        return s != null && ValidSortKeys.Contains(s) ? s : "weighedat";
+    }
+
+    /// Sorts any sequence of (something carrying a WeighEvent) by one of the
+    /// portal's table columns — used identically by Browse (paginating an
+    /// already-filtered population) and Export (the full filtered file), so
+    /// the on-screen order and the downloaded order can never silently
+    /// disagree. Always resolved in memory rather than pushed to SQL:
+    /// branch/device names only exist as lookup dictionaries here, and one
+    /// sort implementation is far less likely to drift than a second,
+    /// SQL-expression version that would have to agree with this one on
+    /// every tie-break and null-ordering rule.
+    private static List<T> ApplySort<T>(
+        List<T> items, Func<T, WeighEvent> ev, string sortKey, bool desc,
+        Dictionary<int, Branch> branchesById, Dictionary<int, string> deviceLabels)
+    {
+        // A missing value (no measurement yet, an unconfigured order with no
+        // expected range, no override reason, an orphaned branch/device id)
+        // always sorts to the END, regardless of direction — it represents
+        // "nothing recorded", not "the smallest value". Flipping a page of
+        // blanks to the TOP the instant someone clicks "ascending" would read
+        // as a bug, not merely a quirky default — every mainstream
+        // spreadsheet/table UI keeps blanks pinned last both ways.
+        List<T> OrderNullsLast<TKey>(Func<T, TKey> key) =>
+            (desc
+                ? items.OrderBy(x => key(x) is null).ThenByDescending(key)
+                : items.OrderBy(x => key(x) is null).ThenBy(key))
+            .ToList();
+
+        return sortKey switch
+        {
+            "measured" => OrderNullsLast(x => ev(x).MeasuredG),
+            "expected" => OrderNullsLast(x => ev(x).ExpectedMinG),
+            "deviation" => OrderNullsLast(x => DeviationOf(ev(x))),
+            "verdict" => OrderNullsLast(x => ev(x).Verdict),
+            "overridereason" => OrderNullsLast(x => ev(x).OverrideReason),
+            "branch" => OrderNullsLast(x => branchesById.GetValueOrDefault(ev(x).BranchId)?.Name),
+            "device" => OrderNullsLast(x => ev(x).DeviceId.HasValue ? deviceLabels.GetValueOrDefault(ev(x).DeviceId!.Value) : null),
+            _ => OrderNullsLast(x => ev(x).WeighedAt),
+        };
     }
 
     private static List<int>? ParseIntList(string? csv)
@@ -235,33 +695,49 @@ public class WeighEventsController : ControllerBase
         return result.Count > 0 ? result : null;
     }
 
-    /// One row per weighed order — the aggregate view, quick to skim.
-    private static string BuildOrderLevelCsv(
+    /// measured − the midpoint of [expectedMin, expectedMax] — the exact same
+    /// definition the portal's scatter chart already uses (deviationOf in
+    /// WeighHistoryPage.tsx), so a number quoted from the table, the chart, or
+    /// an export always means the same thing. Null whenever any of the three
+    /// inputs is missing (an unconfigured verdict, most commonly) — never
+    /// silently rendered as 0, which would read as "spot on" for an order
+    /// that was never actually evaluated.
+    private static decimal? DeviationOf(WeighEvent e) =>
+        e.MeasuredG.HasValue && e.ExpectedMinG.HasValue && e.ExpectedMaxG.HasValue
+            ? e.MeasuredG.Value - (e.ExpectedMinG.Value + e.ExpectedMaxG.Value) / 2
+            : null;
+
+    /// One row per weighed order — the aggregate view, quick to skim. Shared
+    /// by the CSV and Excel export paths (see ExportTableToCsv/ExportTableToXlsx)
+    /// so the two file types can never drift apart on what columns they carry.
+    private static (string[] Headers, List<string[]> Rows) BuildOrderLevelTable(
         List<WeighEvent> rows, Dictionary<int, Branch> branches,
         Dictionary<int, Brand> brands, Dictionary<int, string> deviceLabels)
     {
-        var csv = new StringBuilder();
-        csv.AppendLine(CsvRow(
+        string[] headers =
+        [
             "event_id", "brand_id", "brand_code", "branch_id", "branch_name",
             "device_id", "device_label", "order_label", "foodics_order_id", "weighed_at",
-            "expected_min_g", "expected_max_g", "measured_g", "verdict",
-            "override_reason", "item_missing", "items_json"));
-
+            "expected_min_g", "expected_max_g", "measured_g", "deviation_g", "verdict",
+            "override_reason", "item_missing", "items_json",
+        ];
+        var body = new List<string[]>(rows.Count);
         foreach (var e in rows)
         {
             branches.TryGetValue(e.BranchId, out var branch);
             brands.TryGetValue(branch?.BrandId ?? -1, out var brand);
             var deviceLabel = e.DeviceId.HasValue ? deviceLabels.GetValueOrDefault(e.DeviceId.Value, "") : "";
-            csv.AppendLine(CsvRow(
+            body.Add([
                 e.EventId.ToString(), branch?.BrandId.ToString() ?? "", brand?.Code ?? "",
                 e.BranchId.ToString(), branch?.Name ?? "",
                 e.DeviceId?.ToString() ?? "", deviceLabel, e.OrderLabel ?? "",
                 e.FoodicsOrderId ?? "", e.WeighedAt.ToString("o"),
                 e.ExpectedMinG?.ToString() ?? "", e.ExpectedMaxG?.ToString() ?? "",
-                e.MeasuredG?.ToString() ?? "", e.Verdict, e.OverrideReason ?? "",
-                e.ItemMissing?.ToString() ?? "", e.ItemsJson ?? ""));
+                e.MeasuredG?.ToString() ?? "", DeviationOf(e)?.ToString() ?? "", e.Verdict, e.OverrideReason ?? "",
+                e.ItemMissing?.ToString() ?? "", e.ItemsJson ?? "",
+            ]);
         }
-        return csv.ToString();
+        return (headers, body);
     }
 
     /// One row per order/item/modifier line — "tidy" long format: every
@@ -269,17 +745,19 @@ public class WeighEventsController : ControllerBase
     /// modifiers still gets exactly one row (empty modifier columns), so
     /// grouping by event_id always reconstructs the whole order. Ready for a
     /// training pipeline or a pivot table with no JSON parsing anywhere.
-    private static string BuildItemLevelCsv(
+    private static (string[] Headers, List<string[]> Rows) BuildItemLevelTable(
         List<WeighEvent> rows, Dictionary<int, Branch> branches,
         Dictionary<int, Brand> brands, Dictionary<int, string> deviceLabels)
     {
-        var csv = new StringBuilder();
-        csv.AppendLine(CsvRow(
+        string[] headers =
+        [
             "event_id", "brand_id", "brand_code", "branch_id", "branch_name",
             "device_id", "device_label", "order_label", "foodics_order_id", "weighed_at",
-            "expected_min_g", "expected_max_g", "measured_g", "verdict",
+            "expected_min_g", "expected_max_g", "measured_g", "deviation_g", "verdict",
             "override_reason", "item_missing",
-            "line_index", "menu_item_id", "menu_item_name", "modifier_id", "modifier_name"));
+            "line_index", "menu_item_id", "menu_item_name", "modifier_id", "modifier_name",
+        ];
+        var body = new List<string[]>();
 
         foreach (var e in rows)
         {
@@ -294,7 +772,7 @@ public class WeighEventsController : ControllerBase
                 e.DeviceId?.ToString() ?? "", deviceLabel, e.OrderLabel ?? "",
                 e.FoodicsOrderId ?? "", e.WeighedAt.ToString("o"),
                 e.ExpectedMinG?.ToString() ?? "", e.ExpectedMaxG?.ToString() ?? "",
-                e.MeasuredG?.ToString() ?? "", e.Verdict, e.OverrideReason ?? "",
+                e.MeasuredG?.ToString() ?? "", DeviationOf(e)?.ToString() ?? "", e.Verdict, e.OverrideReason ?? "",
                 e.ItemMissing?.ToString() ?? "",
             ];
 
@@ -310,7 +788,7 @@ public class WeighEventsController : ControllerBase
                 // No composition recorded (an older event, or the tablet
                 // couldn't resolve the order) — still emit one row so this
                 // event isn't silently dropped from item-level analysis.
-                csv.AppendLine(CsvRow([.. common, "", "", "", "", ""]));
+                body.Add([.. common, "", "", "", "", ""]);
                 continue;
             }
 
@@ -319,19 +797,50 @@ public class WeighEventsController : ControllerBase
                 var item = items[i];
                 if (item.Modifiers is null || item.Modifiers.Count == 0)
                 {
-                    csv.AppendLine(CsvRow([.. common, (i + 1).ToString(), item.MenuItemId, item.Name ?? "", "", ""]));
+                    body.Add([.. common, (i + 1).ToString(), item.MenuItemId, item.Name ?? "", "", ""]);
                     continue;
                 }
                 foreach (var mod in item.Modifiers)
                 {
-                    csv.AppendLine(CsvRow([
+                    body.Add([
                         .. common, (i + 1).ToString(), item.MenuItemId, item.Name ?? "",
                         mod.ModifierId, mod.Name ?? "",
-                    ]));
+                    ]);
                 }
             }
         }
+        return (headers, body);
+    }
+
+    private static string TableToCsv(string[] headers, List<string[]> rows)
+    {
+        var csv = new StringBuilder();
+        csv.AppendLine(CsvRow(headers));
+        foreach (var row in rows) csv.AppendLine(CsvRow(row));
         return csv.ToString();
+    }
+
+    /// Same table, as a real .xlsx workbook — a bold frozen header row and
+    /// Excel's own native AutoFilter dropdowns on every column, so "sort and
+    /// filter this in Excel" works immediately on open with no setup. Mirrors
+    /// FormatSheet's conventions in MenuImportExportController.
+    private static byte[] TableToXlsx(string sheetName, string[] headers, List<string[]> rows)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.Worksheets.Add(sheetName);
+        for (var c = 0; c < headers.Length; c++) ws.Cell(1, c + 1).Value = headers[c];
+        for (var r = 0; r < rows.Count; r++)
+        {
+            var row = rows[r];
+            for (var c = 0; c < row.Length; c++) ws.Cell(r + 2, c + 1).Value = row[c];
+        }
+        ws.Row(1).Style.Font.Bold = true;
+        ws.SheetView.FreezeRows(1);
+        if (rows.Count > 0) ws.RangeUsed()?.SetAutoFilter();
+        if (headers.Length > 0) ws.Columns(1, headers.Length).AdjustToContents();
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
     }
 
     private static string CsvRow(params string[] fields) => string.Join(",", fields.Select(CsvField));

@@ -28,6 +28,17 @@ public class Brand
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+
+    // One bag's worth of packaging (bag material, napkins, sauce cups) — a
+    // property of how this brand packs, not of any one menu item. The
+    // tablet multiplies this by however many bags a worker actually
+    // captures for an order (see BulkDeleteWeighEventsDto's neighbor,
+    // ModifierCombinationWeight, for the same "measured range" shape), so
+    // an order that legitimately takes two bags expects roughly twice the
+    // packaging instead of being penalized against a one-bag number.
+    [Column(TypeName = "decimal(8,2)")] public decimal? BagIdealWeightG { get; set; }
+    [Column(TypeName = "decimal(8,2)")] public decimal? BagMinWeightG { get; set; }
+    [Column(TypeName = "decimal(8,2)")] public decimal? BagMaxWeightG { get; set; }
 }
 
 [Table("Branches")]
@@ -146,6 +157,41 @@ public class MenuItemModifier
     public int ModifierId { get; set; }
 }
 
+// A component that ALWAYS comes with a menu item but that a customer never
+// selects — so Foodics never reports it on the order and it cannot be a
+// Modifier. E.g. BBT's "Chilli Lime Tenders Fillaaa" always ships with a
+// ranch dip (~87g) and a slaw (~88g).
+//
+// Folding these into the item's own IdealWeightG instead is what this exists
+// to avoid: doing so blurs the item's measured variance across two different
+// populations (bags that got the dips and bags that didn't), widening its
+// Min/Max band until a genuinely missing dip stops tripping the under-weight
+// check at all.
+//
+// Deliberately NOT a row in dbo.Modifiers: that table is owned by the Foodics
+// catalog sync, which has no upstream row for these and no basis for keeping
+// them. See docs/sql/19_menu_item_inclusions.sql.
+[Table("MenuItemInclusions")]
+public class MenuItemInclusion
+{
+    [Key] public int InclusionId { get; set; }
+    public int MenuItemId { get; set; }
+    public string Name { get; set; } = "";
+
+    // Nullable for the same reason Modifier.WeightG is: an inclusion can be
+    // declared (so staff see it on the tablet) before anyone has weighed it.
+    // Until it has a weight the tablet reports the order as "unconfigured"
+    // rather than silently treating the inclusion as 0g.
+    [Column(TypeName = "decimal(8,2)")] public decimal? IdealWeightG { get; set; }
+    [Column(TypeName = "decimal(8,2)")] public decimal? MinWeightG { get; set; }
+    [Column(TypeName = "decimal(8,2)")] public decimal? MaxWeightG { get; set; }
+
+    public string? UpdatedBy { get; set; }
+    public DateTime UpdatedAt { get; set; }
+
+    public bool IsConfigured => IdealWeightG != null;
+}
+
 [Table("WeighEvents")]
 public class WeighEvent
 {
@@ -160,6 +206,14 @@ public class WeighEvent
     // were what staff actually look at. Null for events reported before this
     // existed.
     public string? OrderLabel { get; set; }
+
+    // The delivery aggregator this order came through ("Talabat", "Keeta
+    // 2.0", …) and its own order number ("5070") — captured alongside
+    // OrderLabel so the portal can show "Talabat #5070" the way the tablet
+    // itself already does. Both null for dine-in/walk-in orders, and for
+    // events reported before this existed.
+    public string? AggregatorName { get; set; }
+    public string? AggregatorRef { get; set; }
     [Column(TypeName = "decimal(9,2)")] public decimal? ExpectedMinG { get; set; }
     [Column(TypeName = "decimal(9,2)")] public decimal? ExpectedMaxG { get; set; }
     [Column(TypeName = "decimal(9,2)")] public decimal? MeasuredG { get; set; }

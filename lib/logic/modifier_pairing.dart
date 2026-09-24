@@ -232,6 +232,37 @@ List<ResolvedModifierSlot> resolveSelectedModifiers(
   return slots;
 }
 
+/// The always-included components of [menuItem] as weighable slots — the
+/// same currency [resolveSelectedModifiers] deals in, so every caller that
+/// sums a line's contributions (the evaluator, the model features, the
+/// discrepancy engine) folds them in the same way and can't drift.
+///
+/// Unlike modifiers these are NOT keyed off the order: nobody selects them,
+/// so the POS never reports them (see [FixedInclusion]). Every order
+/// containing this item gets all of them.
+///
+/// A declared-but-unweighed component contributes nothing here, exactly as
+/// an unweighed modifier does — never 0g, which would quietly understate the
+/// expected weight. It is reported separately by
+/// findUnconfiguredWeightMessages instead.
+List<ResolvedModifierSlot> resolveFixedInclusions(MenuItem menuItem) {
+  final slots = <ResolvedModifierSlot>[];
+  for (final inclusion in menuItem.fixedInclusions) {
+    final weight = inclusion.weightGrams;
+    if (weight == null) continue;
+    slots.add(ResolvedModifierSlot(
+      label: inclusion.name,
+      // Namespaced so an inclusion's id can never collide with a Foodics
+      // modifier id anywhere these slot ids are compared or keyed.
+      ids: ['inclusion:${inclusion.id}'],
+      weightG: weight,
+      minWeightG: inclusion.hasRange ? inclusion.minWeightGrams : null,
+      maxWeightG: inclusion.hasRange ? inclusion.maxWeightGrams : null,
+    ));
+  }
+  return slots;
+}
+
 /// Which of [selectedModifierIds] have NEITHER their own configured weight
 /// NOR are resolved together by a combination override — i.e. genuinely
 /// still unconfigured. A modifier that's only ever meant to be used together

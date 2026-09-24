@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'connection_issue.dart';
 import '../logic/modifier_pairing.dart';
+import '../models/fixed_inclusion.dart';
 import '../models/headoffice_settings.dart';
 import '../models/menu_item.dart';
 import '../models/modifier.dart';
@@ -67,6 +68,14 @@ class HeadOfficeConfig {
   final String? branchOpeningFrom;
   final String? branchOpeningTo;
 
+  /// One bag's worth of packaging (bag material, napkins, sauce cups) for
+  /// this brand — null until set in the portal. The tablet multiplies this
+  /// by however many bags a worker actually captures for an order, rather
+  /// than trying to predict bag count in advance.
+  final double? bagIdealWeightGrams;
+  final double? bagMinWeightGrams;
+  final double? bagMaxWeightGrams;
+
   const HeadOfficeConfig({
     required this.brandId,
     required this.brandCode,
@@ -80,6 +89,9 @@ class HeadOfficeConfig {
     this.branchNameLocalized,
     this.branchOpeningFrom,
     this.branchOpeningTo,
+    this.bagIdealWeightGrams,
+    this.bagMinWeightGrams,
+    this.bagMaxWeightGrams,
   });
 }
 
@@ -455,6 +467,34 @@ HeadOfficeConfig? parseHeadOfficeConfig(Map<String, dynamic> json) {
             for (final mid in linkedIds) ?modifiersById[mid],
           ];
 
+          // Components that always ship with this item but that nobody
+          // selects, so they never appear in an order's modifiers — see
+          // FixedInclusion. Absent on older head-office builds, which simply
+          // means this item has none. A row with no name is unusable (it
+          // could never be shown or explained to staff) and is skipped; a
+          // row with no weight is KEPT, because reporting the order as
+          // unconfigured is the whole point of declaring it early.
+          final itemInclusions = <FixedInclusion>[];
+          final inclusionsRaw = it['inclusions'];
+          if (inclusionsRaw is List) {
+            for (final inc in inclusionsRaw) {
+              try {
+                if (inc is! Map<String, dynamic>) continue;
+                final name = inc['name'] as String?;
+                if (name == null || name.isEmpty) continue;
+                itemInclusions.add(FixedInclusion(
+                  id: (inc['inclusionId'] as num?)?.toInt() ?? 0,
+                  name: name,
+                  weightGrams: (inc['idealWeightG'] as num?)?.toDouble(),
+                  minWeightGrams: (inc['minWeightG'] as num?)?.toDouble(),
+                  maxWeightGrams: (inc['maxWeightG'] as num?)?.toDouble(),
+                ));
+              } catch (_) {
+                // Skip this one malformed inclusion; the rest are usable.
+              }
+            }
+          }
+
           items.add(MenuItem(
             id: id,
             name: name,
@@ -464,6 +504,7 @@ HeadOfficeConfig? parseHeadOfficeConfig(Map<String, dynamic> json) {
             minWeightGrams: (it['minWeightG'] as num?)?.toDouble(),
             maxWeightGrams: (it['maxWeightG'] as num?)?.toDouble(),
             availableModifiers: itemModifiers,
+            fixedInclusions: itemInclusions,
             isActive: it['isActive'] as bool? ?? true,
           ));
         } catch (_) {
@@ -516,6 +557,9 @@ HeadOfficeConfig? parseHeadOfficeConfig(Map<String, dynamic> json) {
       branchNameLocalized: json['branchNameLocalized'] as String?,
       branchOpeningFrom: json['branchOpeningFrom'] as String?,
       branchOpeningTo: json['branchOpeningTo'] as String?,
+      bagIdealWeightGrams: (json['bagIdealWeightG'] as num?)?.toDouble(),
+      bagMinWeightGrams: (json['bagMinWeightG'] as num?)?.toDouble(),
+      bagMaxWeightGrams: (json['bagMaxWeightG'] as num?)?.toDouble(),
     );
   } catch (e) {
     debugPrint('HeadOffice config parse failed: $e');

@@ -303,14 +303,16 @@ public class DevicesController : ControllerBase
         var mods = await _db.Modifiers
             .Where(m => m.BrandId == brand.BrandId).OrderBy(m => m.Name).ToListAsync();
         var itemMods = await BrandsController.ItemModifierFoodicsIdsAsync(_db, brand.BrandId);
+        var inclusions = await BrandsController.InclusionsByItemAsync(_db, brand.BrandId);
         var combinations = await BrandsController.ModifierCombinationConfigsAsync(_db, brand.BrandId);
 
         return Ok(new BrandConfigDto(
             brand.BrandId, brand.Code, brand.Name, brand.PublishedVersion,
-            items.Select(m => BrandsController.ToItemDto(m, itemMods)).ToList(),
+            items.Select(m => BrandsController.ToItemDto(m, itemMods, inclusions)).ToList(),
             mods.Select(BrandsController.ToModDto).ToList(),
             branch.FoodicsBranchId, branch.Name,
             branch.NameLocalized, branch.OpeningFrom, branch.OpeningTo,
-            brand.MenuSyncedVersion, combinations));
+            brand.MenuSyncedVersion, combinations,
+            brand.BagIdealWeightG, brand.BagMinWeightG, brand.BagMaxWeightG));
     }
 }

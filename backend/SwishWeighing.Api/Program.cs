@@ -54,6 +54,8 @@ builder.Services.AddHttpClient<FoodicsService>();
 // service (reads) — it has to outlive any single request.
 builder.Services.AddSingleton<IFoodicsSyncQueue, FoodicsSyncQueue>();
 builder.Services.AddHostedService<FoodicsAutoSyncHostedService>();
+// Staff Weighing page → Supabase pass-through (see StaffWeighingController).
+builder.Services.AddHttpClient("supabase", c => c.Timeout = TimeSpan.FromSeconds(30));
 
 var corsOrigins = builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? Array.Empty<string>();
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>

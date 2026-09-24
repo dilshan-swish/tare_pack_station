@@ -1,3 +1,4 @@
+import 'foodics_order_type.dart';
 import 'kitchen_stage.dart';
 import 'order_item.dart';
 import 'order_status.dart';
@@ -32,6 +33,13 @@ class Order {
   /// aggregator's own slip. Null when unavailable.
   final String? aggregatorRef;
 
+  /// Foodics' own order type (Dine In / Pick Up / Delivery / Drive Thru), for
+  /// the Settings "order types to show" filter. Null when the source doesn't
+  /// provide one (mock data that doesn't set it, or a future Foodics value
+  /// this app doesn't recognize yet) — the filter always shows a null type
+  /// rather than guessing, so a data gap never silently hides an order.
+  final FoodicsOrderType? orderType;
+
   final String customerName;
   final List<OrderItem> items;
   final int readyInMinutes;
@@ -61,6 +69,7 @@ class Order {
     this.checkNumber,
     this.aggregatorName,
     this.aggregatorRef,
+    this.orderType,
     this.receivedAt,
     this.kitchenStage = KitchenStage.ready,
     this.status = OrderStatus.pending,
@@ -120,6 +129,7 @@ class Order {
       checkNumber: checkNumber,
       aggregatorName: aggregatorName,
       aggregatorRef: aggregatorRef,
+      orderType: orderType,
       customerName: customerName,
       items: items,
       readyInMinutes: readyInMinutes,

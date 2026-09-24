@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../models/foodics_order_type.dart';
 import '../models/kitchen_stage.dart';
 import '../models/order.dart';
 import '../models/order_item.dart';
@@ -99,10 +100,12 @@ class FoodicsOrderRepository extends OrderRepository {
     final id = j['id']?.toString() ?? reference ?? orderNumber?.toString();
     if (id == null) return null;
 
+    final orderType = FoodicsOrderType.fromCode((j['type'] as num?)?.toInt());
+
     final customer = j['customer'];
     final rawName =
         customer is Map<String, dynamic> ? customer['name'] as String? : null;
-    final customerName = _displayName(rawName, j['type']);
+    final customerName = _displayName(rawName, orderType);
 
     final (aggregatorName, aggregatorRef) = parseFoodicsAggregator(j['meta']);
 
@@ -146,6 +149,7 @@ class FoodicsOrderRepository extends OrderRepository {
       checkNumber: checkNumber,
       aggregatorName: aggregatorName,
       aggregatorRef: aggregatorRef,
+      orderType: orderType,
       customerName: customerName,
       items: items,
       // `due_at` absent just means "no ready-by time was set" — that's not the
@@ -158,24 +162,20 @@ class FoodicsOrderRepository extends OrderRepository {
     );
   }
 
-  /// "Ahmed K." style label; falls back to an order-type name, then "Guest".
-  String _displayName(String? name, Object? type) {
+  /// "Ahmed K." style label; falls back to the order type's own label (Dine
+  /// In / Pick Up / Delivery / Drive Thru), then "Guest" only when even the
+  /// type is unknown. Previously this fell back straight to "Guest" for
+  /// Drive Thru specifically (type 4 had no case), which made every nameless
+  /// Drive Thru order look identical to a genuinely unidentified one — fixed
+  /// by driving this off the same [FoodicsOrderType] the type filter uses.
+  String _displayName(String? name, FoodicsOrderType? type) {
     final n = name?.trim();
     if (n != null && n.isNotEmpty) {
       final parts = n.split(RegExp(r'\s+'));
       if (parts.length == 1) return parts.first;
       return '${parts.first} ${parts.last[0].toUpperCase()}.';
     }
-    switch (type) {
-      case 1:
-        return 'Dine-in';
-      case 2:
-        return 'Pickup';
-      case 3:
-        return 'Delivery';
-      default:
-        return 'Guest';
-    }
+    return type?.label ?? 'Guest';
   }
 
   int? _minutesUntil(Object? iso) {

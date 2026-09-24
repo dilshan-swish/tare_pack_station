@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/settings_store.dart';
+import '../models/foodics_order_type.dart';
 import '../models/foodics_settings.dart';
 import '../models/headoffice_settings.dart';
 import '../models/serial_settings.dart';
@@ -45,5 +46,20 @@ class SettingsController extends Notifier<AppSettings> {
   void setHeadOffice(HeadOfficeSettings headOffice) {
     state = state.copyWith(headOffice: headOffice);
     _store.saveHeadOffice(headOffice);
+  }
+
+  /// Toggles one order type on/off in the queue filter. Never blocked from
+  /// reaching zero enabled types — Settings itself warns when that happens
+  /// (see _OrderTypesSection), and the queue explains a resulting empty state
+  /// rather than silently showing nothing with no explanation.
+  void toggleOrderType(FoodicsOrderType type, bool enabled) {
+    final next = Set<FoodicsOrderType>.of(state.enabledOrderTypes);
+    if (enabled) {
+      next.add(type);
+    } else {
+      next.remove(type);
+    }
+    state = state.copyWith(enabledOrderTypes: next);
+    _store.saveEnabledOrderTypes(next);
   }
 }

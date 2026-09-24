@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { getConfig, clearConfig } from "./api";
 import { Layout } from "./Layout";
@@ -8,7 +8,13 @@ import { WeightsPage } from "./pages/WeightsPage";
 import { TabletsPage } from "./pages/TabletsPage";
 import { DeviceDetailPage } from "./pages/DeviceDetailPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { WeighHistoryPage } from "./pages/WeighHistoryPage";
+import { CalibratorPage } from "./pages/CalibratorPage";
 import { TrainingDataPage } from "./pages/TrainingDataPage";
+import { Spinner } from "./ui";
+
+// Loaded on demand: it brings supabase-js, which no other page needs.
+const StaffWeighingPage = lazy(() => import("./pages/StaffWeighingPage").then((m) => ({ default: m.StaffWeighingPage })));
 import { AnalyticsLayout } from "./pages/AnalyticsLayout";
 import { AnalyticsAskPage } from "./pages/AnalyticsAskPage";
 import { AnalyticsHistoryPage } from "./pages/AnalyticsHistoryPage";
@@ -49,7 +55,17 @@ export default function App() {
           <Route path="/tablets" element={<TabletsPage />} />
           <Route path="/devices/:deviceId" element={<DeviceDetailPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/weigh-history" element={<WeighHistoryPage />} />
+          <Route path="/calibrator" element={<CalibratorPage />} />
           <Route path="/training-data" element={<TrainingDataPage />} />
+          <Route
+            path="/staff-weighing"
+            element={
+              <Suspense fallback={<Spinner />}>
+                <StaffWeighingPage />
+              </Suspense>
+            }
+          />
           <Route path="/analytics" element={<AnalyticsLayout />}>
             <Route index element={<AnalyticsAskPage />} />
             <Route path="history" element={<AnalyticsHistoryPage />} />

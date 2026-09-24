@@ -79,8 +79,11 @@ class DiscrepancyModelConfig {
     trainedAt: 'n/a',
     priorMissingItem: 1.0,
     priorMissingModifier: 0.6,
-    priorExtraItem: 1.0,
-    priorExtraModifier: 0.6,
+    // A whole extra item requires a genuine mix-up with another order; an
+    // extra portion or sauce just requires a heavier hand — the more common
+    // real event, so it starts with the higher prior.
+    priorExtraItem: 0.5,
+    priorExtraModifier: 1.0,
     priorWrongOrder: 0.9,
     priorNaturalVariation: 0.4,
     scaleNoiseGrams: 6.0,

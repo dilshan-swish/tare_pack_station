@@ -7,12 +7,14 @@ import '../ai/discrepancy.dart';
 import '../ai/discrepancy_providers.dart';
 import '../logic/modifier_pairing.dart';
 import '../logic/weight_evaluator.dart';
+import '../models/fixed_inclusion.dart';
 import '../models/menu_item.dart';
 import '../models/order.dart';
 import '../models/order_item.dart';
 import '../models/order_status.dart';
 import '../models/weight_reading.dart';
 import '../state/headoffice_controller.dart';
+import '../state/headoffice_menu_controller.dart';
 import '../state/menu_index_provider.dart';
 import '../state/order_math.dart';
 import '../state/orders_controller.dart';
@@ -51,13 +53,24 @@ const _overReasons = [
   'Weight should be correct',
 ];
 
+/// Appends the exact over/under variance to an override [reason] — e.g.
+/// "Extra portion added (+45g over)" or "Item left off scale (-38g under)" —
+/// so every off-weight dispatch's recorded reason carries the same
+/// audit-grade detail, regardless of which direction it missed by or
+/// whether it was quick-accepted or picked from the chip list.
+String _withVarianceSuffix(String reason, double deltaGrams) {
+  final direction = deltaGrams >= 0 ? 'over' : 'under';
+  final sign = deltaGrams >= 0 ? '+' : '-';
+  return '$reason ($sign${deltaGrams.abs().round()}g $direction)';
+}
+
 /// Reason recorded when a heavier bag is quick-accepted through the giant
 /// "Force Dispatch" action instead of an audited reason chip — kept distinct
 /// from [_overReasons] so head office can separate an unaudited quick-accept
 /// from a cause staff actually diagnosed, per-brand, for portion-control
 /// review at the end of the day.
 String _forceDispatchReason(double varianceGrams) =>
-    'Force dispatched — not audited (+${varianceGrams.round()}g over)';
+    _withVarianceSuffix('Force dispatched — not audited', varianceGrams);
 
 /// Reason recorded when an order that briefly read under-weight reaches the
 /// expected range after the worker adds the missing item back into the bag —
@@ -75,7 +88,11 @@ const _settleHold = Duration(milliseconds: 900);
 const _successFlashDuration = Duration(milliseconds: 1000);
 
 /// Order detail / weigh-check — the clean "SmartScale" split: a receipt-style
-/// summary on the left and a status panel on the right, on one scroll, no header.
+/// summary on the left and a status panel on the right, on one scroll, no
+/// header. The status card's action row (Confirm & send / Force Dispatch /
+/// Re-weigh) sits right under the banner, above the reasoning below it, so
+/// it's reachable the moment a reading settles rather than after scrolling
+/// past the "why is this off" detail.
 class OrderDetailScreen extends ConsumerStatefulWidget {
   final String orderId;
   const OrderDetailScreen({super.key, required this.orderId});
@@ -128,6 +145,12 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   // capturedTotal + whatever's currently on the scale — so removing a
   // weighed bag to make room for the next one doesn't undercount it.
   final List<double> _capturedBags = [];
+
+  /// How many physical bags this weigh session actually took — the current
+  /// one on the scale (or about to be) plus however many "More Bags" has
+  /// already captured. Feeds the brand's per-bag packaging range; never a
+  /// guess, since it only ever reflects bags a worker has actually placed.
+  int get _bagCount => _capturedBags.length + 1;
 
   /// True right after capturing a bag, until the scale reads empty again —
   /// suppresses auto-arming so the brief moment the just-captured bag is
@@ -248,7 +271,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     final order = ref.read(ordersProvider.notifier).orderById(widget.orderId);
     if (order == null || order.status == OrderStatus.dispatched) return;
     final grams = _effectiveGrams(ref.read(scaleGramsProvider));
-    final math = computeOrderMath(ref, order, measuredGrams: grams);
+    final math = computeOrderMath(ref, order, measuredGrams: grams, bagCount: _bagCount);
     if (math.evaluation?.status != OrderStatus.onWeight) return;
 
     _completeDispatch(
@@ -264,6 +287,20 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     final eval = math.evaluation;
     if (eval == null) return;
     _completeDispatch(math, grams, _forceDispatchReason(eval.deltaGrams));
+  }
+
+  /// The override reason actually recorded for a manually-picked (chip)
+  /// dispatch — null whenever no reason applies (on-weight, or an
+  /// unconfigured order dispatched without one, exactly as before), and
+  /// otherwise the picked chip annotated with the exact over/under variance
+  /// so it carries the same audit detail Force Dispatch already records —
+  /// this is what makes an under-weight dispatch show "-Xg under" alongside
+  /// whichever reason was picked, not just an overweight one.
+  String? _dispatchReasonFor(OrderMath math) {
+    final eval = math.evaluation;
+    final reason = _selectedReason;
+    if (eval == null || !eval.status.isOffWeight || reason == null) return null;
+    return _withVarianceSuffix(reason, eval.deltaGrams);
   }
 
   /// The single path every dispatch (manual, auto golden-path, and force-
@@ -322,6 +359,13 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
       'branchId': 0,
       'foodicsOrderId': widget.orderId,
       'orderLabel': order?.displayTitle,
+      // The aggregator this order came through ("Talabat", "Keeta 2.0") and
+      // its own order number — shown on this screen via displaySubtitle, but
+      // never previously sent to head office, so the portal had no way to
+      // show "Talabat #5070" the way this screen already does. Null for
+      // dine-in/walk-in orders, matching aggregatorLabel's own null case.
+      'aggregatorName': order?.aggregatorName,
+      'aggregatorRef': order?.aggregatorRef,
       'expectedMinG': expMin,
       'expectedMaxG': expMax,
       'measuredG': grams,
@@ -392,6 +436,12 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
             final reading = ref.watch(scaleReadingProvider);
             final rawGrams = ref.watch(scaleGramsProvider);
             final source = ref.watch(weightSourceProvider);
+            final headOfficeMenu = ref.watch(headOfficeMenuProvider);
+            final bagPackaging = BagPackaging(
+              idealGrams: headOfficeMenu.bagIdealWeightGrams,
+              minGrams: headOfficeMenu.bagMinWeightGrams,
+              maxGrams: headOfficeMenu.bagMaxWeightGrams,
+            );
 
             // The just-captured bag has been lifted off once the platter
             // reads empty again — safe to arm the next bag's settle logic.
@@ -401,9 +451,9 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
             final grams = _effectiveGrams(rawGrams);
             final serialNoReading = source is SerialWeightSource && reading == null;
 
-            final math = computeOrderMath(ref, order, measuredGrams: grams);
+            final math = computeOrderMath(ref, order, measuredGrams: grams, bagCount: _bagCount);
             ref.watch(discrepancyEngineProvider);
-            final discrepancy = analyzeDiscrepancy(ref, order, grams);
+            final discrepancy = analyzeDiscrepancy(ref, order, grams, bagCount: _bagCount);
             final isWide = constraints.maxWidth > 720;
 
             _armAutoFlow(
@@ -446,6 +496,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
                   (reading?.stable ?? false),
               onCaptureBag: () => _captureBag(rawGrams, reading?.stable ?? false),
               onUndoBag: _capturedBags.isEmpty ? null : _undoLastBag,
+              bagPackaging: bagPackaging,
             );
 
             final status = _StatusCard(
@@ -465,8 +516,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
               showManualOverride: _showManualOverride,
               onReasonSelected: (r) => setState(() => _selectedReason = r),
               onReweigh: _reweigh,
-              onDispatch: () => _completeDispatch(math, grams,
-                  (math.evaluation?.status.isOffWeight ?? false) ? _selectedReason : null),
+              onDispatch: () => _completeDispatch(math, grams, _dispatchReasonFor(math)),
               onForceDispatch: () => _forceDispatch(math, grams),
               onToggleManualOverride: () =>
                   setState(() => _showManualOverride = !_showManualOverride),
@@ -548,6 +598,11 @@ class _ReceiptCard extends StatelessWidget {
   final VoidCallback onCaptureBag;
   final VoidCallback? onUndoBag;
 
+  /// The brand's one-bag packaging range, set in the portal — none
+  /// (BagPackaging.none) until configured, in which case the receipt falls
+  /// back to the legacy per-item packaging sum.
+  final BagPackaging bagPackaging;
+
   const _ReceiptCard({
     required this.order,
     required this.menuIndex,
@@ -563,11 +618,13 @@ class _ReceiptCard extends StatelessWidget {
     required this.canCaptureBag,
     required this.onCaptureBag,
     required this.onUndoBag,
+    this.bagPackaging = BagPackaging.none,
   });
 
   @override
   Widget build(BuildContext context) {
     double packaging = 0;
+    final bagCount = capturedBags.length + 1;
     final lines = <Widget>[];
     for (var i = 0; i < order.items.length; i++) {
       final line = order.items[i];
@@ -697,13 +754,17 @@ class _ReceiptCard extends StatelessWidget {
         const _DashedLine(),
         ...lines,
         const _DashedLine(),
-        _weightRow('Bag and extras', packaging, subtitle: 'Packaging weight'),
+        _weightRow(
+          'Bag and extras',
+          bagPackaging.isConfigured ? bagPackaging.idealGrams! * bagCount : packaging,
+          subtitle: _packagingSubtitle(bagCount),
+        ),
       ],
     );
 
     return PhysicalShape(
       clipper: _ReceiptClipper(),
-      color: AppColors.cream,
+      color: AppColors.receiptPaper,
       elevation: 2.5,
       shadowColor: AppColors.ink.withValues(alpha: 0.25),
       clipBehavior: Clip.antiAlias,
@@ -775,6 +836,46 @@ class _ReceiptCard extends StatelessWidget {
             bold: true,
           ),
           ...mods,
+          // Nothing on the order ticket mentions these, so the receipt is the
+          // only place staff are told to pack them — see FixedInclusion.
+          for (final inclusion in item.fixedInclusions) _inclusionLine(inclusion),
+        ],
+      ),
+    );
+  }
+
+  /// One always-included component under an item. Marked and coloured
+  /// distinctly from the modifiers above it because the customer never chose
+  /// it and the order ticket never lists it — this row is the reminder.
+  Widget _inclusionLine(FixedInclusion inclusion) {
+    final grams = inclusion.weightGrams;
+    final weighed = grams != null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        children: [
+          const Text('✦ ',
+              style: TextStyle(color: AppColors.greenDark, height: 1, fontSize: 12)),
+          Expanded(
+            child: Text(
+              '${inclusion.name} · always included',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.body(
+                  size: 13,
+                  weight: FontWeight.w600,
+                  color: AppColors.greenDark),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            weighed ? formatGrams(grams) : '—',
+            style: AppTextStyles.mono(
+              size: 11.5,
+              weight: FontWeight.w600,
+              color: weighed ? AppColors.greenDark : AppColors.underText,
+            ),
+          ),
         ],
       ),
     );
@@ -830,6 +931,18 @@ class _ReceiptCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// "42–68g expected · 2 bags" once the brand has a bag range configured
+  /// (falls back to a plain bag count with no range yet, or the legacy
+  /// "Packaging weight" label if the brand hasn't set this up at all).
+  String _packagingSubtitle(int bagCount) {
+    if (!bagPackaging.isConfigured) return 'Packaging weight';
+    final bagWord = bagCount == 1 ? 'bag' : 'bags';
+    if (!bagPackaging.hasRange) return '$bagCount $bagWord';
+    final min = formatGrams(bagPackaging.minGrams! * bagCount);
+    final max = formatGrams(bagPackaging.maxGrams! * bagCount);
+    return '$min–$max expected · $bagCount $bagWord';
   }
 
   Widget _weightRow(String label, double? grams,
@@ -1062,6 +1175,27 @@ class _StatusCard extends StatelessWidget {
                 !serialNoReading &&
                 (!offWeight || selectedReason != null));
 
+    final reasoningContent = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (serialNoReading && !unconfigured) ...[
+          const _InlineNotice(
+            icon: Icons.error_outline,
+            text: 'Scale not responding — connect a scale or switch to '
+                'Manual test mode in Settings.',
+            tone: _NoticeTone.bad,
+          ),
+          const SizedBox(height: 18),
+        ],
+        if (unconfigured)
+          ..._unconfiguredBody()
+        else
+          ..._bodyForState(eval, offWeight),
+      ],
+    );
+
+    // Actions sit right under the banner — reachable the instant a reading
+    // settles, with no scrolling past the reasoning below to reach them.
     return Container(
       decoration: BoxDecoration(
         color: AppColors.white,
@@ -1075,27 +1209,17 @@ class _StatusCard extends StatelessWidget {
         children: [
           _banner(banner),
           Padding(
-            padding: const EdgeInsets.all(22),
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 0),
+            child: _actions(canDispatch),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (serialNoReading && !unconfigured) ...[
-                  const _InlineNotice(
-                    icon: Icons.error_outline,
-                    text: 'Scale not responding — connect a scale or switch to '
-                        'Manual test mode in Settings.',
-                    tone: _NoticeTone.bad,
-                  ),
-                  const SizedBox(height: 18),
-                ],
-                if (unconfigured)
-                  ..._unconfiguredBody()
-                else
-                  ..._bodyForState(eval, offWeight),
-                const SizedBox(height: 20),
                 const _DashedLine(),
-                const SizedBox(height: 16),
-                _actions(canDispatch),
+                const SizedBox(height: 18),
+                reasoningContent,
               ],
             ),
           ),
@@ -1168,10 +1292,19 @@ class _StatusCard extends StatelessWidget {
       ]);
     } else {
       final under = eval.status == OrderStatus.under;
-      final settled = settledStatus == eval.status;
+      // Gated on the READING's own stability, not `settledStatus` — that
+      // field only updates after this app's extra ~900ms debounce, which
+      // exists purely to keep auto-dispatch and the giant Force-Dispatch
+      // button from reacting to a bag still bouncing on the platter. This
+      // callout takes no action on its own (nothing commits until a person
+      // taps something), so it carries none of that risk, and holding it
+      // back by the same 900ms only made a genuinely instant piece of AI
+      // reasoning look slow. `stable` is true immediately for a manual/test
+      // entry and the instant real hardware itself reports a settled read.
+      final stable = reading?.stable ?? false;
       final topMissing = discrepancy.top;
       final showLikelyMissing =
-          under && settled && (topMissing?.kind.isMissing ?? false);
+          under && stable && (topMissing?.kind.isMissing ?? false);
 
       widgets.addAll([
         const SizedBox(height: 18),

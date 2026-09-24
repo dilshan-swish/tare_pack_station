@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<MenuItem> MenuItems => Set<MenuItem>();
     public DbSet<Modifier> Modifiers => Set<Modifier>();
     public DbSet<MenuItemModifier> MenuItemModifiers => Set<MenuItemModifier>();
+    public DbSet<MenuItemInclusion> MenuItemInclusions => Set<MenuItemInclusion>();
     public DbSet<WeighEvent> WeighEvents => Set<WeighEvent>();
     public DbSet<ConfigPublication> ConfigPublications => Set<ConfigPublication>();
     public DbSet<DeviceEvent> DeviceEvents => Set<DeviceEvent>();
@@ -24,6 +25,7 @@ public class AppDbContext : DbContext
         // Computed helpers on the entities are not columns.
         b.Entity<MenuItem>().Ignore(x => x.IsConfigured);
         b.Entity<Modifier>().Ignore(x => x.IsConfigured);
+        b.Entity<MenuItemInclusion>().Ignore(x => x.IsConfigured);
         b.Entity<MenuItemModifier>().HasKey(x => new { x.MenuItemId, x.ModifierId });
     }
 }

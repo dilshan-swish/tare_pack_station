@@ -4,6 +4,7 @@ import '../logic/modifier_pairing.dart';
 import '../logic/weight_evaluator.dart';
 import '../models/menu_item.dart';
 import '../models/order.dart';
+import 'headoffice_menu_controller.dart';
 import 'menu_index_provider.dart';
 import 'settings_controller.dart';
 import 'weight_model_controller.dart';
@@ -51,6 +52,12 @@ Set<String> findUnconfiguredWeightMessages(
       unconfigured.add(optionName != null
           ? '${mi.name}: $optionName not weighed yet'
           : '${mi.name} (option not weighed yet)');
+    }
+    // A declared always-included component with no weight yet leaves the
+    // expected total short by exactly the amount nobody has measured, so the
+    // order is no more checkable than one with an unweighed modifier.
+    for (final inclusion in mi.unweighedInclusions) {
+      unconfigured.add('${mi.name}: ${inclusion.name} (always included) not weighed yet');
     }
   }
   return unconfigured;
@@ -104,31 +111,42 @@ OrderMath computeOrderMath(
   WidgetRef ref,
   Order order, {
   required double? measuredGrams,
+  /// How many physical bags this order actually took — from the screen's own
+  /// captured-bag count (1 + however many "More Bags" has captured so far).
+  /// Multiplies the brand's one-bag packaging range; never guessed here.
+  int bagCount = 1,
 }) {
   final evaluator = ref.read(weightEvaluatorProvider);
   final menuIndex = ref.read(menuIndexProvider);
   final combinationIndex = ref.read(modifierCombinationIndexProvider);
   final tolerance = ref.read(settingsProvider).tolerance;
+  final headOffice = ref.read(headOfficeMenuProvider);
+  final bagPackaging = BagPackaging(
+    idealGrams: headOffice.bagIdealWeightGrams,
+    minGrams: headOffice.bagMinWeightGrams,
+    maxGrams: headOffice.bagMaxWeightGrams,
+  );
 
   // An unweighed item/modifier makes the expected weight unreliable, so the
   // UI warns rather than computing a (wrong) verdict from an incomplete total.
   final unconfigured =
       findUnconfiguredWeightMessages(order, menuIndex, combinationIndex: combinationIndex);
 
-  final statisticalExpected =
-      evaluator.expectedFor(order, menuIndex, combinationIndex: combinationIndex);
+  final statisticalExpected = evaluator.expectedFor(order, menuIndex,
+      combinationIndex: combinationIndex, bagPackaging: bagPackaging, bagCount: bagCount);
   // Prefer an explicit measured Min/Max range (e.g. BBT standards) above
   // everything else — a real measured standard beats any formula. The
   // optional ML model (see docs/AI_MODEL_CONTRACT.md) only ever competes with
   // the STATISTICAL fallback below, and only once every item/modifier is
   // actually configured — it's a refinement of the tolerance formula, never
   // a way to paper over genuinely missing weight data.
-  final range = evaluator.rangeFor(order, menuIndex, combinationIndex: combinationIndex);
+  final range = evaluator.rangeFor(order, menuIndex,
+      combinationIndex: combinationIndex, bagPackaging: bagPackaging, bagCount: bagCount);
 
   var expected = statisticalExpected;
   if (range == null && unconfigured.isEmpty) {
-    final prediction = ref.read(weightModelProvider.notifier).predict(
-        _modelFeatures(order, menuIndex, statisticalExpected, combinationIndex));
+    final prediction = ref.read(weightModelProvider.notifier).predict(_modelFeatures(
+        order, menuIndex, statisticalExpected, combinationIndex, bagPackaging, bagCount));
     if (prediction != null) {
       expected = ExpectedWeight(
           grams: prediction.grams, combinedStdDev: prediction.stdDevGrams);
@@ -161,6 +179,8 @@ List<double> _modelFeatures(
   Map<String, MenuItem> menuIndex,
   ExpectedWeight statisticalExpected,
   ModifierCombinationIndex combinationIndex,
+  BagPackaging bagPackaging,
+  int bagCount,
 ) {
   var itemCount = 0.0;
   var modifierCount = 0.0;
@@ -173,13 +193,22 @@ List<double> _modelFeatures(
     if (menuItem == null) continue;
     itemCount += 1;
     sumBaseWeight += menuItem.baseWeightGrams;
-    sumPackagingWeight += menuItem.packagingWeightGrams;
+    // Once the brand has a bag range configured, that replaces the legacy
+    // per-item packaging sum here too — same reasoning as WeightEvaluator.
+    if (!bagPackaging.isConfigured) sumPackagingWeight += menuItem.packagingWeightGrams;
     modifierCount += line.selectedModifierIds.length;
-    for (final slot
-        in resolveSelectedModifiers(menuItem, line.selectedModifierIds, combinationIndex)) {
+    // Always-included components count here too: feature 6 is the
+    // statistical expected total, which already includes them, so leaving
+    // them out of the component sums would break the invariant that the
+    // sums add up to it (see docs/AI_MODEL_CONTRACT.md).
+    for (final slot in [
+      ...resolveSelectedModifiers(menuItem, line.selectedModifierIds, combinationIndex),
+      ...resolveFixedInclusions(menuItem),
+    ]) {
       sumModifierWeight += slot.weightG;
     }
   }
+  if (bagPackaging.isConfigured) sumPackagingWeight += bagPackaging.idealGrams! * bagCount;
 
   return [
     itemCount,

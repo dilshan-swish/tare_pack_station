@@ -55,6 +55,13 @@ class HeadOfficeMenuState {
   final String? branchOpeningFrom;
   final String? branchOpeningTo;
 
+  /// One bag's worth of packaging — see HeadOfficeConfig.bagIdealWeightGrams.
+  /// Null until set in the portal, in which case packaging falls back to the
+  /// per-item statistical estimate (see WeightEvaluator).
+  final double? bagIdealWeightGrams;
+  final double? bagMinWeightGrams;
+  final double? bagMaxWeightGrams;
+
   const HeadOfficeMenuState({
     this.items = const [],
     this.modifierCombinations = const [],
@@ -68,6 +75,9 @@ class HeadOfficeMenuState {
     this.branchNameLocalized,
     this.branchOpeningFrom,
     this.branchOpeningTo,
+    this.bagIdealWeightGrams,
+    this.bagMinWeightGrams,
+    this.bagMaxWeightGrams,
   });
 
   /// The best available human-readable branch label — Foodics' own localized
@@ -152,6 +162,9 @@ class HeadOfficeMenuController extends Notifier<HeadOfficeMenuState> {
           branchNameLocalized: cached.branchNameLocalized,
           branchOpeningFrom: cached.branchOpeningFrom,
           branchOpeningTo: cached.branchOpeningTo,
+          bagIdealWeightGrams: cached.bagIdealWeightGrams,
+          bagMinWeightGrams: cached.bagMinWeightGrams,
+          bagMaxWeightGrams: cached.bagMaxWeightGrams,
         );
       }
     } catch (e) {
@@ -180,6 +193,9 @@ class HeadOfficeMenuController extends Notifier<HeadOfficeMenuState> {
       branchNameLocalized: config.branchNameLocalized,
       branchOpeningFrom: config.branchOpeningFrom,
       branchOpeningTo: config.branchOpeningTo,
+      bagIdealWeightGrams: config.bagIdealWeightGrams,
+      bagMinWeightGrams: config.bagMinWeightGrams,
+      bagMaxWeightGrams: config.bagMaxWeightGrams,
     );
     try {
       await ref.read(settingsStoreProvider).saveHeadOfficeMenu(
@@ -189,7 +205,10 @@ class HeadOfficeMenuController extends Notifier<HeadOfficeMenuState> {
           branchNameLocalized: config.branchNameLocalized,
           branchOpeningFrom: config.branchOpeningFrom,
           branchOpeningTo: config.branchOpeningTo,
-          modifierCombinations: config.modifierCombinations);
+          modifierCombinations: config.modifierCombinations,
+          bagIdealWeightGrams: config.bagIdealWeightGrams,
+          bagMinWeightGrams: config.bagMinWeightGrams,
+          bagMaxWeightGrams: config.bagMaxWeightGrams);
     } catch (e) {
       debugPrint('HeadOfficeMenu cache save failed: $e');
     }

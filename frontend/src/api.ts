@@ -1,6 +1,7 @@
 import type {
   BrandSummary,
   MenuItem,
+  MenuItemInclusion,
   Modifier,
   ItemModifierGroup,
   SyncResult,
@@ -18,7 +19,19 @@ import type {
   ModifierCombination,
   MenuImportResult,
   TrainingPreviewResult,
+  WeighHistoryResult,
+  WeighScatterResult,
 } from "./types";
+
+// Create and update take the same fields — an inclusion is identified by its
+// (item, name) pair, so renaming one is an ordinary edit.
+export interface InclusionBody {
+  name: string;
+  idealWeightG: number | null;
+  minWeightG: number | null;
+  maxWeightG: number | null;
+  updatedBy?: string;
+}
 
 // --- Connection config (base URL + API key), kept in localStorage ---
 
@@ -122,6 +135,17 @@ const qs = (params: Record<string, string | number | boolean | undefined | (stri
 export const api = {
   brands: () => request<BrandSummary[]>("/api/brands"),
 
+  // One bag's worth of packaging (bag material, napkins, sauce cups) for the
+  // brand — the tablet multiplies this by however many bags an order took.
+  updateBrandPackaging: (
+    brandId: number,
+    body: { bagIdealWeightG: number | null; bagMinWeightG: number | null; bagMaxWeightG: number | null },
+  ) =>
+    request<BrandSummary>(`/api/brands/${brandId}/packaging`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
   items: (
     brandId: number,
     search?: string,
@@ -135,6 +159,27 @@ export const api = {
 
   itemModifierGroups: (itemId: number) =>
     request<ItemModifierGroup[]>(`/api/items/${itemId}/modifiers`),
+
+  // Always-included components — parts of an item a customer never picks
+  // (a ranch dip, a slaw), so they never reach us from Foodics and have to be
+  // declared here. See MenuItemInclusion.
+  itemInclusions: (itemId: number) =>
+    request<MenuItemInclusion[]>(`/api/items/${itemId}/inclusions`),
+
+  createInclusion: (itemId: number, body: InclusionBody) =>
+    request<MenuItemInclusion>(`/api/items/${itemId}/inclusions`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateInclusion: (inclusionId: number, body: InclusionBody) =>
+    request<MenuItemInclusion>(`/api/inclusions/${inclusionId}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
+  deleteInclusion: (inclusionId: number) =>
+    request<void>(`/api/inclusions/${inclusionId}`, { method: "DELETE" }),
 
   modifiers: (brandId: number, search?: string, active?: boolean) =>
     request<Modifier[]>(`/api/brands/${brandId}/modifiers` + qs({ search, active })),
@@ -290,9 +335,16 @@ export const api = {
     brandIds?: number[];
     branchIds?: number[];
     verdicts?: string[];
+    itemIds?: number[];
+    itemCount?: number;
     from?: string;
     to?: string;
     format?: "orders" | "items";
+    // "csv" (default) or "xlsx" — a real Excel workbook with a frozen bold
+    // header row and native AutoFilter dropdowns already applied.
+    fileType?: "csv" | "xlsx";
+    sortBy?: string;
+    sortDir?: "asc" | "desc";
   }) => downloadFile("/api/weigh-events/export" + qs(params)),
 
   // The exact same CSV the download above produces, fetched as text instead
@@ -303,10 +355,53 @@ export const api = {
     brandIds?: number[];
     branchIds?: number[];
     verdicts?: string[];
+    itemIds?: number[];
+    itemCount?: number;
     from?: string;
     to?: string;
     format?: "orders" | "items";
   }) => fetchTextFile("/api/weigh-events/export" + qs(params)),
+
+  // One weigh event's full detail (including its raw item/modifier
+  // composition) — used by the Weigh History page's "View breakdown" action,
+  // which needs the same rich detail the per-device dashboard already shows
+  // without the paginated browse response above carrying every row's full
+  // JSON.
+  weighEvent: (eventId: number) => request<WeighEventEntry>(`/api/weigh-events/${eventId}`),
+
+  // Paginated, richly-filterable weigh events for the Weigh History page —
+  // same filter shape as exportWeighedOrders/previewWeighedOrders above, so
+  // "what's on screen" and "what downloads" never drift apart. itemCount
+  // matches orders whose composition has EXACTLY that many item lines.
+  weighHistory: (params: {
+    brandIds?: number[];
+    branchIds?: number[];
+    deviceId?: number;
+    verdicts?: string[];
+    itemIds?: number[];
+    itemCount?: number;
+    from?: string;
+    to?: string;
+    sortBy?: string;
+    sortDir?: "asc" | "desc";
+    page?: number;
+    pageSize?: number;
+  }) => request<WeighHistoryResult>("/api/weigh-events/browse" + qs(params)),
+
+  // Every weighed order matching the exact same filters as weighHistory
+  // above, unpaginated, as lightweight Expected-vs-Measured points for the
+  // scatter chart — capped server-side (see WeighScatterResultDto) rather
+  // than ever trying to plot an unreadable number of points.
+  weighScatter: (params: {
+    brandIds?: number[];
+    branchIds?: number[];
+    deviceId?: number;
+    verdicts?: string[];
+    itemIds?: number[];
+    itemCount?: number;
+    from?: string;
+    to?: string;
+  }) => request<WeighScatterResult>("/api/weigh-events/scatter" + qs(params)),
 
   // A small, recent sample of matched weighed orders — regardless of trust
   // status, each one flagged — plus full-filtered-set summary counts. The
@@ -358,6 +453,16 @@ export const api = {
 
   dataQuality: (params: { from?: string; to?: string } = {}) =>
     request<DataQualitySummary>("/api/analytics/data-quality" + qs(params)),
+
+  // Permanently deletes every weigh event for the given branches — the
+  // Training Data page's "Clear weigh events" tool. Branch ids are required;
+  // there's no server-side "clear everything" shortcut, so clearing every
+  // branch means selecting every branch explicitly in the portal.
+  bulkDeleteWeighEvents: (branchIds: number[]) =>
+    request<{ deletedCount: number; branchIds: number[] }>("/api/weigh-events/bulk-delete", {
+      method: "POST",
+      body: JSON.stringify({ branchIds }),
+    }),
 };
 
 async function uploadFile(path: string, file: File): Promise<ModelMeta> {

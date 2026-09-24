@@ -5,6 +5,11 @@ export interface BrandSummary {
   publishedVersion: number;
   totalItems: number;
   missingWeights: number;
+  // One bag's worth of packaging (bag material, napkins, sauce cups) — the
+  // tablet multiplies this by however many bags an order actually took.
+  bagIdealWeightG?: number | null;
+  bagMinWeightG?: number | null;
+  bagMaxWeightG?: number | null;
 }
 
 export interface MenuItem {
@@ -21,6 +26,29 @@ export interface MenuItem {
   maxWeightG: number | null;
   packagingWeightG: number | null;
   isConfigured: boolean;
+  // Always-included components (see MenuItemInclusion). Always present on
+  // every MenuItem the API returns — never optional, so replacing a local
+  // copy of an item with a fresh response can't silently drop them.
+  inclusions: MenuItemInclusion[];
+}
+
+// A component that ALWAYS comes with an item but that a customer never picks
+// — a ranch dip, a slaw — so Foodics never reports it on the order and it
+// can't be a Modifier. The tablet adds every one of these to the expected
+// weight for every order of the item, which is what makes a missing one show
+// up as under-weight instead of disappearing into the item's own Min/Max
+// band. idealWeightG is null until someone weighs it; until then the tablet
+// reports the order unconfigured rather than counting the inclusion as 0g.
+export interface MenuItemInclusion {
+  inclusionId: number;
+  menuItemId: number;
+  name: string;
+  idealWeightG: number | null;
+  minWeightG: number | null;
+  maxWeightG: number | null;
+  isConfigured: boolean;
+  updatedAt: string;
+  updatedBy: string | null;
 }
 
 export interface Modifier {
@@ -160,6 +188,66 @@ export interface TrainingPreviewResult {
   orders: TrainingOrderPreview[];
 }
 
+// One weighed order for the Weigh History page — general-purpose browsing,
+// unlike TrainingOrderPreview's clean/excluded training framing.
+export interface WeighHistoryRow {
+  eventId: number;
+  weighedAt: string;
+  brandCode: string | null;
+  branchName: string | null;
+  deviceLabel: string | null;
+  orderLabel: string | null;
+  expectedMinG: number | null;
+  expectedMaxG: number | null;
+  measuredG: number | null;
+  verdict: string;
+  overrideReason: string | null;
+  itemNames: string[];
+}
+
+// The verdict breakdown behind Weigh History's summary tiles — computed over
+// EXACTLY the same filtered population the table and "N orders match" line
+// reflect (every active filter included: branches, verdict, items, item
+// count, date range), so total always equals totalCount above. total can
+// exceed onWeight+under+over+unconfigured only if a row has a stray/legacy
+// verdict outside those four.
+export interface WeighHistoryVerdictCounts {
+  total: number;
+  onWeight: number;
+  under: number;
+  over: number;
+  unconfigured: number;
+}
+
+export interface WeighHistoryResult {
+  totalCount: number;
+  rows: WeighHistoryRow[];
+  verdictCounts: WeighHistoryVerdictCounts;
+}
+
+// One plottable order for the Expected-vs-Measured scatter chart. Carries
+// the full accepted band (min/max), not just a midpoint, so the chart can
+// show it in a tooltip instead of reducing it to one number before display.
+export interface WeighScatterPoint {
+  eventId: number;
+  expectedMinG: number;
+  expectedMaxG: number;
+  measuredG: number;
+  verdict: string;
+  // Lets clicking a point open the same order-breakdown modal the Weigh
+  // History table uses — a chart spanning several brands needs this to know
+  // which brand's live catalog to fetch alongside the order.
+  brandCode: string | null;
+}
+
+export interface WeighScatterResult {
+  plotted: number;
+  // Matched every other filter but couldn't be plotted (no expected range
+  // or no measured weight recorded) — shown, never silently dropped.
+  excluded: number;
+  points: WeighScatterPoint[];
+}
+
 export interface Device {
   deviceId: number;
   branchId: number;
@@ -257,6 +345,25 @@ export interface WeighEventEntry {
   // parseUnconfiguredReasons(). Null for events reported before this
   // existed, and for any event that isn't unconfigured in the first place.
   unconfiguredReasonsJson: string | null;
+  // The delivery aggregator this order came through ("Talabat", "Keeta 2.0")
+  // and its own order number ("5070") — both null for dine-in/walk-in orders
+  // and for events reported before this existed. Combine as
+  // `${aggregatorName} #${aggregatorRef}` for display (see
+  // formatAggregatorLabel below).
+  aggregatorName: string | null;
+  aggregatorRef: string | null;
+}
+
+/** The aggregator confirmation label — "Talabat #5070", or just the name if
+ * there's no reference number. Null when this isn't an aggregator order. */
+export function formatAggregatorLabel(
+  aggregatorName: string | null,
+  aggregatorRef: string | null,
+): string | null {
+  const name = aggregatorName?.trim();
+  if (!name) return null;
+  const ref = aggregatorRef?.trim();
+  return ref ? `${name} #${ref}` : name;
 }
 
 /** Parses `WeighEventEntry.itemsJson`, or null if absent/malformed — never throws. */

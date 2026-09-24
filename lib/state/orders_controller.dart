@@ -78,6 +78,24 @@ final orderRepositoryProvider = Provider<OrderRepository>((ref) {
 final ordersProvider =
     AsyncNotifierProvider<OrdersController, List<Order>>(OrdersController.new);
 
+/// [ordersProvider], narrowed to only the order types currently enabled in
+/// Settings (e.g. hiding Drive Thru at a branch that doesn't want it
+/// cluttering the queue). Purely a display filter — dispatch, refresh, and
+/// order lookup by id all still go through [ordersProvider]/[OrdersController]
+/// directly, so a filtered-out order is simply never shown, never lost.
+/// An order with no recognized [Order.orderType] (older data, or a brand-new
+/// Foodics type this app doesn't know yet) always passes through regardless
+/// of the current filter — failing open, so a data gap can never silently
+/// disappear an order nobody can then find.
+final filteredOrdersProvider = Provider<AsyncValue<List<Order>>>((ref) {
+  final enabledTypes =
+      ref.watch(settingsProvider.select((s) => s.enabledOrderTypes));
+  return ref.watch(ordersProvider).whenData((orders) => [
+        for (final o in orders)
+          if (o.orderType == null || enabledTypes.contains(o.orderType)) o,
+      ]);
+});
+
 class OrdersController extends AsyncNotifier<List<Order>> {
   @override
   Future<List<Order>> build() async {

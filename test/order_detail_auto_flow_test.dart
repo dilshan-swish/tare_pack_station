@@ -255,4 +255,72 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 1100));
   });
+
+  testWidgets(
+      'underweight dispatched via a picked reason records exactly how much '
+      'it was under, the same way an overweight dispatch already does',
+      (tester) async {
+    final env = await _pumpScreen(tester, 'manual_under');
+
+    env.source.setGrams(130, stable: true); // -120g under the 237.5g floor
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final chip = find.text('Item left off scale');
+    expect(chip, findsOneWidget);
+    await tester.tap(chip);
+    await tester.pump();
+
+    final sendButton = find.text('Confirm & send');
+    expect(sendButton, findsOneWidget);
+    await tester.tap(sendButton);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(env.captured(), isNotNull);
+    final body = jsonDecode(env.captured()!.body) as Map<String, dynamic>;
+    expect(body['verdict'], 'under');
+    expect(body['overrideReason'], 'Item left off scale (-120g under)');
+
+    await tester.pump(const Duration(milliseconds: 1100));
+  });
+
+  testWidgets(
+      'overweight dispatched via a picked reason (not the quick Force '
+      'Dispatch button) also records the exact variance', (tester) async {
+    final env = await _pumpScreen(tester, 'manual_over');
+
+    env.source.setGrams(310, stable: true); // +60g over the 262.5g ceiling
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 700)); // let it settle
+
+    // Settled-overweight defaults to the giant Force Dispatch button —
+    // switch to the ordinary reason picker instead.
+    final pickReason = find.text('Pick a specific reason instead');
+    expect(pickReason, findsOneWidget);
+    await tester.ensureVisible(pickReason);
+    await tester.tap(pickReason);
+    await tester.pump();
+
+    final chip = find.text('Extra portion added');
+    expect(chip, findsOneWidget);
+    await tester.ensureVisible(chip);
+    await tester.pump();
+    await tester.tap(chip);
+    await tester.pump();
+
+    final sendButton = find.text('Confirm & send');
+    expect(sendButton, findsOneWidget);
+    await tester.ensureVisible(sendButton);
+    await tester.pump();
+    await tester.tap(sendButton);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(env.captured(), isNotNull);
+    final body = jsonDecode(env.captured()!.body) as Map<String, dynamic>;
+    expect(body['verdict'], 'over');
+    expect(body['overrideReason'], 'Extra portion added (+60g over)');
+
+    await tester.pump(const Duration(milliseconds: 1100));
+  });
 }

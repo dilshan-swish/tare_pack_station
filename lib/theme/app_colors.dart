@@ -16,6 +16,12 @@ class AppColors {
   /// The receipt "paper" — warm off-white so the left panel looks printed.
   static const Color cream = Color(0xFFFBF8F0);
 
+  /// A touch darker than [cream] — the receipt panel's own paper tone only
+  /// (see `_ReceiptCard`). Kept separate from [cream] since that constant is
+  /// reused all over the app (text on dark surfaces, dropdowns, toggles),
+  /// and darkening it globally would move far more than the receipt.
+  static const Color receiptPaper = Color(0xFFF1EADA);
+
   /// Hairline borders / dividers.
   static const Color line = Color(0xFFE7E9E4);
 

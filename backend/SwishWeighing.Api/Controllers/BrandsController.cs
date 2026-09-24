@@ -31,7 +31,8 @@ public class BrandsController : ControllerBase
             var total = await _db.MenuItems.CountAsync(m => m.BrandId == b.BrandId && m.IsActive);
             var missing = await _db.MenuItems.CountAsync(m =>
                 m.BrandId == b.BrandId && m.IsActive && (m.MinWeightG == null || m.MaxWeightG == null));
-            result.Add(new BrandSummaryDto(b.BrandId, b.Code, b.Name, b.PublishedVersion, total, missing));
+            result.Add(new BrandSummaryDto(b.BrandId, b.Code, b.Name, b.PublishedVersion, total, missing,
+                b.BagIdealWeightG, b.BagMinWeightG, b.BagMaxWeightG));
         }
         return Ok(result);
     }
@@ -50,13 +51,42 @@ public class BrandsController : ControllerBase
         var mods = await _db.Modifiers
             .Where(m => m.BrandId == brandId).OrderBy(m => m.Name).ToListAsync();
         var itemMods = await ItemModifierFoodicsIdsAsync(_db, brandId);
+        var inclusions = await InclusionsByItemAsync(_db, brandId);
         var combinations = await ModifierCombinationConfigsAsync(_db, brandId);
 
         return Ok(new BrandConfigDto(
             brand.BrandId, brand.Code, brand.Name, brand.PublishedVersion,
-            items.Select(m => ToItemDto(m, itemMods)).ToList(),
+            items.Select(m => ToItemDto(m, itemMods, inclusions)).ToList(),
             mods.Select(ToModDto).ToList(),
-            MenuSyncedVersion: brand.MenuSyncedVersion, ModifierCombinations: combinations));
+            MenuSyncedVersion: brand.MenuSyncedVersion, ModifierCombinations: combinations,
+            BagIdealWeightG: brand.BagIdealWeightG, BagMinWeightG: brand.BagMinWeightG,
+            BagMaxWeightG: brand.BagMaxWeightG));
+    }
+
+    /// <summary>Sets a brand's one-bag packaging range (see Brand.BagIdealWeightG) —
+    /// how much one bag of packaging/extras weighs, before the tablet multiplies it
+    /// by however many bags an order actually took.</summary>
+    [HttpPut("{brandId:int}/packaging")]
+    public async Task<ActionResult<BrandSummaryDto>> UpdatePackaging(int brandId, [FromBody] UpdateBrandPackagingDto body)
+    {
+        var brand = await _db.Brands.FindAsync(brandId);
+        if (brand is null) return NotFound();
+
+        var error = MenuController.ValidateItemWeights(
+            body.BagIdealWeightG, body.BagMinWeightG, body.BagMaxWeightG, packaging: null);
+        if (error != null) return BadRequest(new { error });
+
+        brand.BagIdealWeightG = body.BagIdealWeightG;
+        brand.BagMinWeightG = body.BagMinWeightG;
+        brand.BagMaxWeightG = body.BagMaxWeightG;
+        brand.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        var total = await _db.MenuItems.CountAsync(m => m.BrandId == brandId && m.IsActive);
+        var missing = await _db.MenuItems.CountAsync(m =>
+            m.BrandId == brandId && m.IsActive && (m.MinWeightG == null || m.MaxWeightG == null));
+        return Ok(new BrandSummaryDto(brand.BrandId, brand.Code, brand.Name, brand.PublishedVersion, total, missing,
+            brand.BagIdealWeightG, brand.BagMinWeightG, brand.BagMaxWeightG));
     }
 
     /// <summary>
@@ -161,20 +191,50 @@ public class BrandsController : ControllerBase
         }
     }
 
-    // itemMods (from ItemModifierFoodicsIdsAsync) drives both HasModifiers and
-    // ModifierIds from the one source of truth. Only omit it where a caller
-    // never sends the DTO back to a client that might replace its whole local
-    // copy of the item with it (an omission here previously made the portal's
-    // own "Modifiers — show" toggle vanish right after saving an item's
-    // weight, since HasModifiers/ModifierIds would silently come back
-    // empty/false and overwrite what was already known client-side).
-    internal static MenuItemDto ToItemDto(MenuItem m, Dictionary<int, List<string>>? itemMods = null)
+    /// <summary>
+    /// This brand's always-included, non-selectable components, keyed by
+    /// MenuItemId (see MenuItemInclusion / docs/sql/19_menu_item_inclusions.sql).
+    /// Same shape and purpose as <see cref="ItemModifierFoodicsIdsAsync"/>: one
+    /// query for the whole brand, so building N item DTOs never becomes N
+    /// queries.
+    /// </summary>
+    internal static async Task<Dictionary<int, List<MenuItemInclusion>>> InclusionsByItemAsync(
+        AppDbContext db, int brandId, CancellationToken ct = default)
     {
-        var modifierIds = itemMods?.GetValueOrDefault(m.MenuItemId) ?? new List<string>();
+        var itemIds = await db.MenuItems
+            .Where(m => m.BrandId == brandId).Select(m => m.MenuItemId).ToListAsync(ct);
+        if (itemIds.Count == 0) return new Dictionary<int, List<MenuItemInclusion>>();
+
+        var rows = await db.MenuItemInclusions
+            .Where(x => itemIds.Contains(x.MenuItemId)).ToListAsync(ct);
+        return rows.GroupBy(x => x.MenuItemId)
+            .ToDictionary(g => g.Key, g => g.OrderBy(x => x.Name).ToList());
+    }
+
+    internal static MenuItemInclusionDto ToInclusionDto(MenuItemInclusion x) => new(
+        x.InclusionId, x.MenuItemId, x.Name,
+        x.IdealWeightG, x.MinWeightG, x.MaxWeightG, x.IsConfigured, x.UpdatedAt, x.UpdatedBy);
+
+    // itemMods (from ItemModifierFoodicsIdsAsync) drives both HasModifiers and
+    // ModifierIds from the one source of truth; inclusions (from
+    // InclusionsByItemAsync) carries the item's always-included components.
+    // BOTH are deliberately required parameters rather than optional: the
+    // portal replaces its whole local copy of an item with this DTO, so a
+    // caller that quietly omitted one would wipe it out client-side. That
+    // exact omission previously made the portal's own "Modifiers — show"
+    // toggle vanish right after saving an item's weight; making it impossible
+    // to compile such a call is the fix that generalizes.
+    internal static MenuItemDto ToItemDto(MenuItem m,
+        Dictionary<int, List<string>> itemMods,
+        Dictionary<int, List<MenuItemInclusion>> inclusions)
+    {
+        var modifierIds = itemMods.GetValueOrDefault(m.MenuItemId) ?? new List<string>();
+        var itemInclusions = inclusions.GetValueOrDefault(m.MenuItemId) ?? new List<MenuItemInclusion>();
         return new(
             m.MenuItemId, m.FoodicsProductId, m.Name, m.CategoryName,
             m.Sku, m.CategoryReference, m.IsActive, modifierIds.Count > 0, modifierIds,
-            m.IdealWeightG, m.MinWeightG, m.MaxWeightG, m.PackagingWeightG, m.IsConfigured);
+            m.IdealWeightG, m.MinWeightG, m.MaxWeightG, m.PackagingWeightG, m.IsConfigured,
+            itemInclusions.Select(ToInclusionDto).ToList());
     }
 
     internal static ModifierDto ToModDto(Modifier m) => new(

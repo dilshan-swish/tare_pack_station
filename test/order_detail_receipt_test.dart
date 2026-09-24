@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tare_pack_station/data/order_repository.dart';
 import 'package:tare_pack_station/data/settings_store.dart';
 import 'package:tare_pack_station/logic/modifier_pairing.dart';
+import 'package:tare_pack_station/models/fixed_inclusion.dart';
 import 'package:tare_pack_station/models/menu_item.dart';
 import 'package:tare_pack_station/models/modifier.dart';
 import 'package:tare_pack_station/models/order.dart';
@@ -261,5 +262,72 @@ void main() {
     expect(find.text('MEDIUM'), findsOneWidget);
     expect(find.text('Salt'), findsOneWidget);
     expect(find.text('2g'), findsOneWidget);
+  });
+
+  // Always-included components are the one part of the bag NOTHING on the
+  // order ticket mentions — the customer didn't pick them and the POS never
+  // reports them — so the receipt is the only place staff are reminded to
+  // pack them. If they don't render, the feature is invisible at the pack
+  // station no matter how correct the arithmetic behind it is.
+  testWidgets('the receipt lists an item\'s always-included components',
+      (tester) async {
+    const menu = {
+      'mi_tenders': MenuItem(
+        id: 'mi_tenders',
+        name: 'Chilli Lime Tenders Fillaaa',
+        baseWeightGrams: 510,
+        minWeightGrams: 470,
+        maxWeightGrams: 550,
+        availableModifiers: [
+          Modifier(id: 'mod_drink', name: 'Coca-Cola Zero', weightGrams: 265),
+        ],
+        fixedInclusions: [
+          FixedInclusion(id: 1, name: 'Ranch', weightGrams: 87),
+          // Declared but not weighed yet — must still be listed (so staff
+          // pack it) and must read as unweighed rather than showing a
+          // made-up number.
+          FixedInclusion(id: 2, name: 'Slaw', weightGrams: null),
+        ],
+      ),
+    };
+    final order = Order(
+      id: 'order_test_4',
+      orderNumber: 214,
+      customerName: 'Test Customer',
+      readyInMinutes: 0,
+      dasherInMinutes: 0,
+      items: const [
+        OrderItem(menuItemId: 'mi_tenders', selectedModifierIds: ['mod_drink']),
+      ],
+    );
+
+    tester.view.physicalSize = const Size(1024, 768);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          initialSettingsProvider.overrideWithValue(AppSettings.defaults()),
+          menuIndexProvider.overrideWithValue(menu),
+          orderRepositoryProvider.overrideWithValue(_FakeOrderRepository([order])),
+        ],
+        child: MaterialApp(
+          theme: buildAppTheme(),
+          home: const OrderDetailScreen(orderId: 'order_test_4'),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(tester.takeException(), isNull);
+    // Labelled so it's obvious nobody chose these — they're part of the item.
+    expect(find.text('Ranch · always included'), findsOneWidget);
+    expect(find.text('87g'), findsOneWidget);
+    expect(find.text('Slaw · always included'), findsOneWidget);
+    // The customer's own choice still renders normally alongside them.
+    expect(find.text('Coca-Cola Zero'), findsOneWidget);
   });
 }

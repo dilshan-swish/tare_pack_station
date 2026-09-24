@@ -42,8 +42,11 @@ function useNavItems(): NavItem[] {
     { to: "/", label: "Brands", active: isBrands },
     { to: "/tablets", label: "Smart Scales", active: loc.pathname === "/tablets" },
     { to: "/dashboard", label: "Dashboard", active: loc.pathname === "/dashboard" },
+    { to: "/weigh-history", label: "Weigh History", active: loc.pathname === "/weigh-history" },
+    { to: "/calibrator", label: "Calibrator", active: loc.pathname === "/calibrator" },
     { to: "/analytics", label: "Analytics", active: loc.pathname.startsWith("/analytics") },
     { to: "/training-data", label: "Training Data", active: loc.pathname === "/training-data" },
+    { to: "/staff-weighing", label: "Staff Weighing", active: loc.pathname === "/staff-weighing" },
   ];
 }
 

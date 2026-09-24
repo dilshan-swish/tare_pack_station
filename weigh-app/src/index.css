@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/* TARE visual identity — matches the pack-station tablet app staff already use. */
+@theme {
+  --color-green: #2f8f5b;
+  --color-green-dark: #256b45;
+  --color-cream: #f6f1e3;
+  --color-ink: #161b14;
+  --color-coral: #e8604c;
+  --color-amber: #f3a93b;
+  --color-okbg: #dff2e6;
+  --color-oktext: #1c5c39;
+  --color-underbg: #fbe1dc;
+  --color-undertext: #8a2f1f;
+  --color-muted: #5b6456;
+
+  --font-display: "Archivo Black", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "Space Mono", ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-green);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+}
+
+/* The hard-shadow "neubrutalist" card — the app's visual signature. */
+.neo {
+  background: var(--color-cream);
+  border: 2.5px solid var(--color-ink);
+  border-radius: 20px;
+  box-shadow: 7px 7px 0 rgb(22 27 20 / 0.9);
+}
+.neo-sm {
+  background: var(--color-cream);
+  border: 2.5px solid var(--color-ink);
+  border-radius: 16px;
+  box-shadow: 4px 4px 0 rgb(22 27 20 / 0.9);
+}
+.press {
+  transition: transform 90ms ease-out, box-shadow 90ms ease-out;
+}
+.press:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 2px 2px 0 rgb(22 27 20 / 0.9);
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-amber);
+  outline-offset: 2px;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.animate-rise { animation: rise 220ms ease-out both; }
+.animate-spin-slow { animation: spin 0.9s linear infinite; }
+.animate-pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

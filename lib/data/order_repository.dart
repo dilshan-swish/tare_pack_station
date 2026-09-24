@@ -1,3 +1,4 @@
+import '../models/foodics_order_type.dart';
 import '../models/order.dart';
 import '../models/order_item.dart';
 
@@ -42,6 +43,7 @@ class MockOrderRepository extends OrderRepository {
         checkNumber: 130840,
         aggregatorName: 'Talabat',
         aggregatorRef: '5070',
+        orderType: FoodicsOrderType.delivery,
         customerName: 'Hamid S.',
         readyInMinutes: 9,
         dasherInMinutes: 4,
@@ -64,6 +66,7 @@ class MockOrderRepository extends OrderRepository {
         checkNumber: 130841,
         aggregatorName: 'Keeta 2.0',
         aggregatorRef: '…3635',
+        orderType: FoodicsOrderType.delivery,
         customerName: 'Layla K.',
         readyInMinutes: 6,
         dasherInMinutes: 3,
@@ -84,6 +87,7 @@ class MockOrderRepository extends OrderRepository {
         id: '8712320',
         orderNumber: 14,
         checkNumber: 130842,
+        orderType: FoodicsOrderType.dineIn,
         customerName: 'Omar T.',
         readyInMinutes: 12,
         dasherInMinutes: 6,
@@ -101,6 +105,7 @@ class MockOrderRepository extends OrderRepository {
         id: '8712321',
         orderNumber: 15,
         checkNumber: 130843,
+        orderType: FoodicsOrderType.pickUp,
         customerName: 'Sara M.',
         readyInMinutes: 5,
         dasherInMinutes: 5,
@@ -121,6 +126,7 @@ class MockOrderRepository extends OrderRepository {
         id: '8712322',
         orderNumber: 16,
         checkNumber: 130844,
+        orderType: FoodicsOrderType.driveThru,
         customerName: 'Yousef A.',
         readyInMinutes: 14,
         dasherInMinutes: 7,
@@ -141,6 +147,7 @@ class MockOrderRepository extends OrderRepository {
         id: '8712323',
         orderNumber: 17,
         checkNumber: 130845,
+        orderType: FoodicsOrderType.dineIn,
         customerName: 'Nour F.',
         readyInMinutes: 8,
         dasherInMinutes: 4,

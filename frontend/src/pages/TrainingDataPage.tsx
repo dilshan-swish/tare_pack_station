@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api";
+import { askConfirm } from "../confirmDialog";
 import type { Branch, BrandSummary, TrainingComponent, TrainingOrderPreview, TrainingPreviewResult } from "../types";
 import {
   Card,
@@ -213,6 +214,18 @@ export function TrainingDataPage() {
   const [exporting, setExporting] = useState<"orders" | "components" | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  // Deliberately its own brand/branch selection, separate from the filter
+  // above — a destructive action should never share state with an unrelated
+  // workflow, so picking branches to export never accidentally lines up
+  // branches to delete. Nothing pre-selected, either: clearing data starts
+  // from a conscious, empty choice, not a default.
+  const [dangerBrandId, setDangerBrandId] = useState<string>("");
+  const [dangerBranchState, setDangerBranchState] = useState<BranchLoadState>(undefined);
+  const [dangerBranchIds, setDangerBranchIds] = useState<Set<number>>(new Set());
+  const [clearing, setClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
+  const [clearedMessage, setClearedMessage] = useState<string | null>(null);
+
   useEffect(() => {
     (async () => {
       try {
@@ -237,6 +250,19 @@ export function TrainingDataPage() {
       }
     })();
   }, [selectedBrandId]);
+
+  useEffect(() => {
+    if (!dangerBrandId) return;
+    setDangerBranchIds(new Set());
+    setDangerBranchState("loading");
+    (async () => {
+      try {
+        setDangerBranchState(await api.branches(Number(dangerBrandId)));
+      } catch {
+        setDangerBranchState("error");
+      }
+    })();
+  }, [dangerBrandId]);
 
   function currentRange(): { from?: string; to?: string } {
     return rangePreset === "custom"
@@ -290,6 +316,42 @@ export function TrainingDataPage() {
       setExportError(e instanceof ApiError ? e.message : "Export failed. Check your connection and try again.");
     } finally {
       setExporting(null);
+    }
+  }
+
+  async function clearWeighEvents() {
+    const ids = [...dangerBranchIds];
+    if (ids.length === 0) return;
+    const names =
+      Array.isArray(dangerBranchState)
+        ? dangerBranchState.filter((b) => dangerBranchIds.has(b.branchId)).map((b) => b.nameLocalized || b.name)
+        : [];
+    const target = names.length > 0 ? names.join(", ") : `${ids.length} branch${ids.length === 1 ? "" : "es"}`;
+    const ok = await askConfirm({
+      title: "Clear weigh events?",
+      message: `This permanently deletes every weighed-order record for ${target}. Analytics, training data, and history for ${
+        ids.length === 1 ? "this branch" : "these branches"
+      } will be gone — this can't be undone.`,
+      confirmLabel: "Clear weigh events",
+      tone: "danger",
+    });
+    if (!ok) return;
+
+    setClearing(true);
+    setClearError(null);
+    setClearedMessage(null);
+    try {
+      const result = await api.bulkDeleteWeighEvents(ids);
+      setClearedMessage(
+        `Deleted ${result.deletedCount.toLocaleString()} weigh event${result.deletedCount === 1 ? "" : "s"} for ${target}.`,
+      );
+      setDangerBranchIds(new Set());
+    } catch (e) {
+      setClearError(
+        e instanceof ApiError ? e.message : "Couldn't clear weigh events. Check your connection and try again.",
+      );
+    } finally {
+      setClearing(false);
     }
   }
 
@@ -517,6 +579,85 @@ export function TrainingDataPage() {
           )}
         </Card>
       )}
+
+      {/* ---- Danger zone: clear weigh events ---- */}
+      <Card className="mt-6 border-badtext/30 p-5">
+        <div className="font-display text-sm text-badtext">Clear weigh events</div>
+        <p className="mt-0.5 text-xs text-muted">
+          Permanently deletes weighed-order records for the selected branches — the raw data behind
+          analytics, training exports, and history. This is a separate pick from the filter above, on
+          purpose, so exporting one set of branches never lines up with deleting another.
+        </p>
+
+        <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
+          <div>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">Brand</span>
+            {brands.length === 0 ? (
+              <Spinner />
+            ) : (
+              <Select
+                value={dangerBrandId}
+                onChange={setDangerBrandId}
+                options={[{ value: "", label: "Choose a brand…" }, ...brands.map((b) => ({ value: String(b.brandId), label: b.name }))]}
+              />
+            )}
+          </div>
+
+          <div className="min-w-0 sm:flex-1">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-muted">
+              Branches to clear{dangerBranchIds.size > 0 ? ` (${dangerBranchIds.size} selected)` : ""}
+            </span>
+            {!dangerBrandId ? (
+              <p className="text-sm text-muted">Pick a brand first.</p>
+            ) : dangerBranchState === "loading" || dangerBranchState === undefined ? (
+              <p className="text-sm text-muted">Loading branches…</p>
+            ) : dangerBranchState === "error" ? (
+              <p className="text-sm text-badtext">Couldn't load branches for this brand.</p>
+            ) : dangerBranchState.length === 0 ? (
+              <p className="text-sm text-muted">No branches synced for this brand yet.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {dangerBranchState.map((b) => (
+                  <TogglePill
+                    key={b.branchId}
+                    active={dangerBranchIds.has(b.branchId)}
+                    onClick={() => setDangerBranchIds((prev) => toggledNumSet(prev, b.branchId))}
+                  >
+                    {b.nameLocalized || b.name}
+                  </TogglePill>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <Button
+            variant="danger"
+            onClick={() => void clearWeighEvents()}
+            disabled={dangerBranchIds.size === 0 || clearing}
+          >
+            {clearing ? (
+              <>
+                <ButtonSpinner /> Clearing…
+              </>
+            ) : (
+              `Clear weigh events${dangerBranchIds.size > 0 ? ` (${dangerBranchIds.size})` : ""}`
+            )}
+          </Button>
+        </div>
+
+        {clearedMessage && (
+          <div className="mt-3">
+            <Banner tone="ok">{clearedMessage}</Banner>
+          </div>
+        )}
+        {clearError && (
+          <div className="mt-3">
+            <Banner tone="bad">{clearError}</Banner>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

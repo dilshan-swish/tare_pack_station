@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "react-router-dom";
+import { Check } from "lucide-react";
+import type { Branch, BrandSummary, MenuItem, Modifier, WeighEventEntry } from "./types";
+import { parseWeighEventItems, parseUnconfiguredReasons, formatAggregatorLabel } from "./types";
+import { api } from "./api";
 
 // Clean, brand-accented building blocks with tasteful motion.
 
@@ -100,6 +105,149 @@ export function TogglePill({
     >
       {children}
     </button>
+  );
+}
+
+/// Toggles [id] in [set], returning a new Set — for any multi-select filter
+/// keyed by string id (verdicts, item ids as strings, etc.).
+export function toggledStrSet(set: Set<string>, id: string): Set<string> {
+  const next = new Set(set);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
+export type BranchLoadState = Branch[] | "loading" | "error";
+
+/// One brand's filter pill — clicking it opens a dropdown of that brand's own
+/// branches to multi-select from, with a "Select all" shortcut. The pill
+/// itself shows a count badge for a partial selection, or a ✓ once every one
+/// of the brand's branches is selected (the same as filtering by the whole
+/// brand, without needing a separate "select this whole brand" affordance).
+/// Shared by every page that filters weigh data by brand + branch (the
+/// Dashboard's export card, Weigh History) so the interaction never drifts
+/// between them.
+export function BrandBranchPicker({
+  brand,
+  isOpen,
+  onToggleOpen,
+  onClose,
+  branchState,
+  onFetch,
+  selected,
+  onToggleBranch,
+  onSelectAll,
+  onSelectNone,
+}: {
+  brand: BrandSummary;
+  isOpen: boolean;
+  onToggleOpen: () => void;
+  onClose: () => void;
+  branchState: BranchLoadState | undefined;
+  onFetch: () => void;
+  selected: Set<number>;
+  onToggleBranch: (branchId: number) => void;
+  onSelectAll: () => void;
+  onSelectNone: () => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [isOpen, onClose]);
+
+  function handleToggle() {
+    onToggleOpen();
+    if (!isOpen && branchState === undefined) onFetch();
+  }
+
+  const total = Array.isArray(branchState) ? branchState.length : 0;
+  const count = selected.size;
+  const allSelected = total > 0 && count === total;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={handleToggle}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-all duration-150 ease-out active:scale-[0.96] ${
+          count > 0
+            ? "border-green bg-green text-white card-shadow"
+            : "border-line bg-white text-muted hover:-translate-y-px hover:border-ink/30 hover:text-ink"
+        }`}
+      >
+        {brand.name}
+        {count > 0 && (
+          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-white/25 px-1 text-[10px] font-bold">
+            {allSelected ? "✓" : count}
+          </span>
+        )}
+        <svg
+          width="10"
+          height="6"
+          viewBox="0 0 10 6"
+          fill="none"
+          className={`shrink-0 transition-transform duration-150 ${isOpen ? "-rotate-180" : ""}`}
+        >
+          <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="animate-pop-in absolute left-0 z-30 mt-1.5 w-64 rounded-2xl border border-line bg-white p-2 card-shadow-hover">
+          {branchState === undefined || branchState === "loading" ? (
+            <div className="p-3 text-center text-xs text-muted">Loading branches…</div>
+          ) : branchState === "error" ? (
+            <div className="p-3 text-xs text-badtext">Failed to load branches.</div>
+          ) : branchState.length === 0 ? (
+            <div className="p-3 text-xs text-muted">
+              No branches synced for this brand yet — sync branches on the Smart Scales page
+              first.
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={allSelected ? onSelectNone : onSelectAll}
+                className="mb-1 block w-full rounded-lg px-2 py-1.5 text-left text-xs font-bold text-green transition-colors hover:bg-green/10"
+              >
+                {allSelected ? "Clear all" : `Select all (${branchState.length})`}
+              </button>
+              <div className="max-h-56 space-y-0.5 overflow-y-auto">
+                {branchState.map((b) => (
+                  <label
+                    key={b.branchId}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-black/[0.04]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.has(b.branchId)}
+                      onChange={() => onToggleBranch(b.branchId)}
+                      className="accent-green"
+                    />
+                    <span className="truncate text-ink">{b.nameLocalized || b.name}</span>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -298,23 +446,31 @@ export function Modal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
+      {/* `flex-col` + `max-h-full` on this panel (against the backdrop's own
+          padded content box) is what caps it to the viewport instead of
+          spilling past the top/bottom edge with nothing able to scroll it —
+          a real report: on a short window, content taller than the screen
+          (e.g. a long order breakdown) rendered fully off-screen with no
+          scrollbar, silently hiding its own Close button. The header stays
+          `shrink-0` so it — and the ✕ — are always reachable, while only the
+          body below it scrolls. */}
       <div
-        className={`${entrance === "turn" ? "animate-turn-pop-in" : "animate-pop-in"} w-full ${maxWidth} rounded-2xl border border-line bg-white p-5 card-shadow-hover`}
+        className={`${entrance === "turn" ? "animate-turn-pop-in" : "animate-pop-in"} flex max-h-full w-full ${maxWidth} flex-col overflow-hidden rounded-2xl border border-line bg-white card-shadow-hover`}
       >
         {title && (
-          <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-line px-5 py-4">
             <h3 className="text-base font-extrabold tracking-tight text-ink">{title}</h3>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="flex h-7 w-7 items-center justify-center rounded-full text-muted transition hover:bg-black/[0.05] hover:text-ink"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted transition hover:bg-black/[0.05] hover:text-ink"
             >
               ✕
             </button>
           </div>
         )}
-        {children}
+        <div className="overflow-y-auto p-5">{children}</div>
       </div>
     </div>,
     document.body,
@@ -656,5 +812,220 @@ export function DateRangeFilter({
         </div>
       )}
     </div>
+  );
+}
+
+// --- Order breakdown modal (weigh events) ----------------------------------
+// Shared by the per-device dashboard (DeviceDetailPage) and the Weigh History
+// page's "View breakdown" action, so both show exactly the same detail for
+// the exact same event rather than two components drifting apart over time.
+
+function weighVerdictTone(v: string): "neutral" | "ok" | "warn" | "bad" {
+  const s = v.toLowerCase();
+  if (s === "onweight") return "ok";
+  if (s === "under") return "bad";
+  if (s === "over") return "warn";
+  return "neutral";
+}
+
+function weighVerdictLabel(v: string): string {
+  const s = v.toLowerCase();
+  if (s === "onweight") return "On weight";
+  if (s === "under") return "Under";
+  if (s === "over") return "Over";
+  return v || "Unknown";
+}
+
+function formatGrams(n: number | null): string {
+  if (n == null) return "—";
+  return `${Math.round(n).toLocaleString()}g`;
+}
+
+function formatWeighTime(iso: string): string {
+  const d = new Date(iso.endsWith("Z") ? iso : iso + "Z");
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+/// The full breakdown for one weigh — items, their modifiers, and the
+/// expected/measured numbers — the same information the tablet itself showed
+/// staff at the moment of weighing. Composition is only ever available for
+/// events reported after that capture existed; older ones show a plain,
+/// honest "not recorded" note rather than a blank or fabricated breakdown.
+export function OrderBreakdownModal({
+  weigh,
+  brandId,
+  onClose,
+}: {
+  weigh: WeighEventEntry;
+  brandId?: number | null;
+  onClose: () => void;
+}) {
+  const items = parseWeighEventItems(weigh.itemsJson);
+  const unconfiguredReasons = parseUnconfiguredReasons(weigh.unconfiguredReasonsJson);
+  const aggregatorLabel = formatAggregatorLabel(weigh.aggregatorName, weigh.aggregatorRef);
+
+  // The composition snapshot only ever stores names, never weights — showing
+  // each line's currently configured weight (for comparison against what was
+  // actually measured) needs a fresh fetch of the brand's live catalog. Runs
+  // for every verdict, not just "unconfigured": even an on-weight order is
+  // worth comparing against what's configured NOW, in case it's since changed.
+  const [configById, setConfigById] = useState<{
+    items: Map<string, MenuItem>;
+    modifiers: Map<string, Modifier>;
+  } | null>(null);
+
+  useEffect(() => {
+    setConfigById(null);
+    if (brandId == null) return;
+    let cancelled = false;
+    Promise.all([api.items(brandId), api.modifiers(brandId)])
+      .then(([menuItems, modifiers]) => {
+        if (cancelled) return;
+        setConfigById({
+          items: new Map(menuItems.map((mi) => [mi.foodicsProductId, mi])),
+          modifiers: new Map(modifiers.map((m) => [m.foodicsModifierId, m])),
+        });
+      })
+      .catch(() => {
+        // A failed lookup just means no ticks/weights show — the rest of the
+        // breakdown (already loaded) stays fully usable either way.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [weigh.eventId, brandId]);
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={weigh.orderLabel ?? (weigh.foodicsOrderId ? `Order ${weigh.foodicsOrderId}` : "Order breakdown")}
+      entrance="turn"
+      maxWidth="max-w-lg"
+    >
+      <div className="mb-1 flex flex-wrap items-center gap-2">
+        <Badge tone={weighVerdictTone(weigh.verdict)}>{weighVerdictLabel(weigh.verdict)}</Badge>
+        <span className="font-mono text-xs text-muted">{formatWeighTime(weigh.weighedAt)}</span>
+      </div>
+
+      {aggregatorLabel && <p className="mb-1 text-sm font-semibold text-ink">{aggregatorLabel}</p>}
+
+      {weigh.orderLabel && weigh.foodicsOrderId && (
+        <p className="mb-4 truncate font-mono text-[11px] text-muted" title={weigh.foodicsOrderId}>
+          {weigh.foodicsOrderId}
+        </p>
+      )}
+
+      <div className="mb-4 grid grid-cols-3 gap-2 rounded-xl border border-line bg-black/[0.02] p-3 text-center">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Measured</div>
+          <div className="font-mono text-lg font-bold text-ink">{formatGrams(weigh.measuredG)}</div>
+        </div>
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Expected</div>
+          <div className="font-mono text-lg font-bold text-ink">
+            {weigh.expectedMinG != null && weigh.expectedMaxG != null
+              ? `${formatGrams(weigh.expectedMinG)}–${formatGrams(weigh.expectedMaxG)}`
+              : "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Reason</div>
+          <div className="text-sm font-semibold text-ink">{weigh.overrideReason ?? "—"}</div>
+        </div>
+      </div>
+
+      {weigh.verdict === "unconfigured" && (
+        <div className="mb-4 rounded-xl border border-amber/40 bg-warnbg p-3">
+          <div className="text-sm font-bold text-ink">Why this couldn't be checked</div>
+          {unconfiguredReasons && unconfiguredReasons.length > 0 ? (
+            <ul className="mt-1.5 space-y-1">
+              {unconfiguredReasons.map((reason, i) => (
+                <li key={i} className="flex items-start gap-1.5 text-sm text-[#5c4413]">
+                  <span className="mt-0.5 text-[#8a5a10]">⚠</span>
+                  <span>{reason}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-sm text-[#5c4413]">
+              This weigh happened before the app tracked exactly which item or modifier was
+              missing a weight — only that the order couldn't be fully checked.
+            </p>
+          )}
+          <p className="mt-2 text-xs text-[#5c4413]/80">
+            To fix this, set that item's or modifier's weight in{" "}
+            {brandId != null ? (
+              <Link to={`/brands/${brandId}/weights`} className="font-semibold underline decoration-dotted">
+                Brands → Weights
+              </Link>
+            ) : (
+              <span className="font-semibold">Brands → Weights</span>
+            )}
+            . Nothing else is needed — it takes effect the next time this item is ordered.
+          </p>
+        </div>
+      )}
+
+      {items === null ? (
+        <p className="text-sm text-muted">
+          Item breakdown wasn't recorded for this weigh (it happened before this app tracked
+          composition, or the order couldn't be resolved at the time).
+        </p>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-muted">This order had no line items.</p>
+      ) : (
+        <ul className="divide-y divide-line rounded-xl border border-line">
+          {items.map((item, i) => {
+            const itemConfig = configById?.items.get(item.menuItemId);
+            return (
+              <li key={i} className="p-3">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-semibold text-ink">{item.name ?? item.menuItemId}</span>
+                  {itemConfig?.isConfigured && (
+                    <span
+                      className="inline-flex items-center gap-0.5 text-xs font-semibold text-oktext"
+                      title="This item's weight is configured"
+                    >
+                      <Check size={12} strokeWidth={3} /> {formatGrams(itemConfig.idealWeightG)}
+                    </span>
+                  )}
+                </div>
+                {item.modifiers && item.modifiers.length > 0 && (
+                  <ul className="mt-1.5 space-y-1 pl-3">
+                    {item.modifiers.map((mod, j) => {
+                      const modConfig = configById?.modifiers.get(mod.modifierId);
+                      return (
+                        <li key={j} className="flex flex-wrap items-center gap-1.5 text-sm text-muted">
+                          <span className="text-ink/30">+</span>
+                          {mod.name ?? mod.modifierId}
+                          {modConfig?.isConfigured && (
+                            <span
+                              className="inline-flex items-center gap-0.5 text-xs font-semibold text-oktext"
+                              title="This modifier's weight is configured"
+                            >
+                              <Check size={11} strokeWidth={3} /> {formatGrams(modConfig.weightG)}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <div className="mt-5 flex justify-end">
+        <Button onClick={onClose}>Close</Button>
+      </div>
+    </Modal>
   );
 }

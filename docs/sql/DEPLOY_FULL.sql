@@ -1,8 +1,8 @@
 /* ============================================================================
    SWiSH Weighing Platform — FULL, CONSOLIDATED deployment script
    ============================================================================
-   Represents the schema as of docs/sql/16_modifier_combination_anchor.sql —
-   equivalent to running every docs/sql/00_*.sql through 16_*.sql file, in
+   Represents the schema as of docs/sql/19_menu_item_inclusions.sql —
+   equivalent to running every docs/sql/00_*.sql through 19_*.sql file, in
    order, in one pass. Written to be genuinely safe to re-run:
 
      - Every CREATE TABLE is guarded with IF OBJECT_ID(...) IS NULL.
@@ -95,7 +95,10 @@ CREATE TABLE dbo.Brands (
     MenuSyncedVersion INT           NOT NULL DEFAULT 0,   -- bumped by automatic Foodics sync (webhook/sweep)
     IsActive          BIT           NOT NULL DEFAULT 1,
     CreatedAt         DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
-    UpdatedAt         DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME()
+    UpdatedAt         DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
+    BagIdealWeightG   DECIMAL(8,2)  NULL,             -- one bag's packaging/extras — see docs/sql/17_brand_bag_packaging.sql
+    BagMinWeightG     DECIMAL(8,2)  NULL,
+    BagMaxWeightG     DECIMAL(8,2)  NULL
 );
 GO
 
@@ -183,6 +186,33 @@ CREATE TABLE dbo.MenuItemModifiers (
 );
 GO
 
+-- Always-included components (docs/sql/19_menu_item_inclusions.sql) ----------------
+-- Parts of an item a customer never picks (a ranch dip, a slaw), so the POS never
+-- reports them and they cannot be a Modifier. Head-office-authored only: the
+-- Foodics catalog sync has no upstream row for these and never touches this table.
+IF OBJECT_ID('dbo.MenuItemInclusions','U') IS NULL
+BEGIN
+    CREATE TABLE dbo.MenuItemInclusions (
+        InclusionId   INT IDENTITY(1,1) NOT NULL,
+        MenuItemId    INT            NOT NULL,
+        Name          NVARCHAR(120)  NOT NULL,   -- e.g. 'Ranch', 'Slaw'
+        IdealWeightG  DECIMAL(8,2)   NULL,       -- NULL = declared but not weighed yet
+        MinWeightG    DECIMAL(8,2)   NULL,
+        MaxWeightG    DECIMAL(8,2)   NULL,
+        UpdatedBy     NVARCHAR(128)  NULL,
+        UpdatedAt     DATETIME2(0)   NOT NULL CONSTRAINT DF_MenuItemInclusions_UpdatedAt DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT PK_MenuItemInclusions PRIMARY KEY (InclusionId),
+        CONSTRAINT FK_MenuItemInclusions_MenuItem FOREIGN KEY (MenuItemId)
+            REFERENCES dbo.MenuItems(MenuItemId) ON DELETE CASCADE,
+        CONSTRAINT UQ_MenuItemInclusions_Item_Name UNIQUE (MenuItemId, Name),
+        CONSTRAINT CK_MenuItemInclusions_Range CHECK (
+            MinWeightG IS NULL OR MaxWeightG IS NULL OR MaxWeightG >= MinWeightG)
+    );
+
+    CREATE INDEX IX_MenuItemInclusions_MenuItemId ON dbo.MenuItemInclusions(MenuItemId);
+END
+GO
+
 -- Weigh events (telemetry + AI training) -------------------------------------------
 IF OBJECT_ID('dbo.WeighEvents','U') IS NULL
 CREATE TABLE dbo.WeighEvents (
@@ -191,6 +221,8 @@ CREATE TABLE dbo.WeighEvents (
     BranchId                 INT           NOT NULL REFERENCES dbo.Branches(BranchId),
     FoodicsOrderId           NVARCHAR(64)  NULL,
     OrderLabel               NVARCHAR(64)  NULL,        -- short staff-facing label, e.g. "Order 63"
+    AggregatorName           NVARCHAR(64)  NULL,        -- e.g. "Talabat", "Keeta 2.0" — null for dine-in/walk-in
+    AggregatorRef            NVARCHAR(64)  NULL,        -- the aggregator's own order number, e.g. "5070"
     ExpectedMinG             DECIMAL(9,2)  NULL,
     ExpectedMaxG             DECIMAL(9,2)  NULL,
     MeasuredG                DECIMAL(9,2)  NULL,
@@ -335,6 +367,15 @@ GO
 IF COL_LENGTH('dbo.Brands', 'MenuSyncedVersion') IS NULL
     ALTER TABLE dbo.Brands ADD MenuSyncedVersion INT NOT NULL DEFAULT 0;
 GO
+IF COL_LENGTH('dbo.Brands', 'BagIdealWeightG') IS NULL
+    ALTER TABLE dbo.Brands ADD BagIdealWeightG DECIMAL(8,2) NULL;
+GO
+IF COL_LENGTH('dbo.Brands', 'BagMinWeightG') IS NULL
+    ALTER TABLE dbo.Brands ADD BagMinWeightG DECIMAL(8,2) NULL;
+GO
+IF COL_LENGTH('dbo.Brands', 'BagMaxWeightG') IS NULL
+    ALTER TABLE dbo.Brands ADD BagMaxWeightG DECIMAL(8,2) NULL;
+GO
 
 -- Branches: the original schema had Code NOT NULL with a UNIQUE(BrandId,Code)
 -- constraint keyed on it; 03_branches_devices.sql switched the real key to
@@ -398,6 +439,14 @@ IF COL_LENGTH('dbo.WeighEvents', 'UnconfiguredReasonsJson') IS NULL
     ALTER TABLE dbo.WeighEvents ADD UnconfiguredReasonsJson NVARCHAR(MAX) NULL;
 GO
 
+IF COL_LENGTH('dbo.WeighEvents', 'AggregatorName') IS NULL
+    ALTER TABLE dbo.WeighEvents ADD AggregatorName NVARCHAR(64) NULL;
+GO
+
+IF COL_LENGTH('dbo.WeighEvents', 'AggregatorRef') IS NULL
+    ALTER TABLE dbo.WeighEvents ADD AggregatorRef NVARCHAR(64) NULL;
+GO
+
 -- ---------------------------------------------------------------------------
 -- Step 4 — indexes (guarded; match exactly what the API's actual query
 -- patterns need — see the "why no extra indexes" note in
@@ -451,7 +500,7 @@ GO
    ---------------------------------------------------------------------------- */
 
 PRINT '============================================================';
-PRINT 'SwishWeighing schema is fully up to date (through migration 16).';
+PRINT 'SwishWeighing schema is fully up to date (through migration 19).';
 PRINT '============================================================';
 GO
 

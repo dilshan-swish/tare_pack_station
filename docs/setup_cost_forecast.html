@@ -1,0 +1,401 @@
+<!doctype html>
+<title>Dispatch Station Cost Forecast</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap">
+<style>
+:root {
+  --cream: #F6F1E3;
+  --cream-2: #EDE6D3;
+  --ink: #17211B;
+  --muted: #5B6B5E;
+  --line: #D8CFB4;
+  --white: #FFFFFF;
+  --green: #2F8F5B;
+  --green-dark: #1C5C39;
+  --green-bg: #E3F1E8;
+  --amber: #C97F0E;
+  --amber-bg: #FBEBCF;
+  --coral: #C4432E;
+  --coral-bg: #FBE4DE;
+  --shadow: rgba(23,33,27,0.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --cream: #14180F;
+    --cream-2: #1C2117;
+    --ink: #ECE9DD;
+    --muted: #9BA89C;
+    --line: #3A4438;
+    --white: #1E241B;
+    --green: #5CB587;
+    --green-dark: #7CCB9E;
+    --green-bg: #1E3327;
+    --amber: #E3A63E;
+    --amber-bg: #3A2E13;
+    --coral: #E88A72;
+    --coral-bg: #3A2119;
+    --shadow: rgba(0,0,0,0.4);
+  }
+}
+:root[data-theme="dark"] {
+  --cream: #14180F;
+  --cream-2: #1C2117;
+  --ink: #ECE9DD;
+  --muted: #9BA89C;
+  --line: #3A4438;
+  --white: #1E241B;
+  --green: #5CB587;
+  --green-dark: #7CCB9E;
+  --green-bg: #1E3327;
+  --amber: #E3A63E;
+  --amber-bg: #3A2E13;
+  --coral: #E88A72;
+  --coral-bg: #3A2119;
+  --shadow: rgba(0,0,0,0.4);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--cream);
+  color: var(--ink);
+  font-family: 'Inter', sans-serif;
+  padding: 40px 20px 60px;
+}
+.sheet { max-width: 780px; margin: 0 auto; }
+
+.mono { font-family: 'Space Mono', monospace; font-variant-numeric: tabular-nums; }
+
+/* --- Letterhead --- */
+.letterhead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding-bottom: 22px;
+  border-bottom: 2.5px solid var(--ink);
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  width: 34px; height: 34px; border-radius: 9px;
+  background: var(--green); border: 2px solid var(--ink);
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Archivo Black', sans-serif; color: var(--cream); font-size: 15px;
+}
+.brand-name { font-family: 'Archivo Black', sans-serif; font-size: 16px; letter-spacing: 0.02em; }
+.brand-sub { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+.doc-meta { text-align: right; font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+.doc-meta b { color: var(--ink); font-weight: 600; }
+
+h1 {
+  font-family: 'Archivo Black', sans-serif;
+  font-weight: 400;
+  font-size: clamp(24px, 4vw, 32px);
+  line-height: 1.1;
+  margin: 26px 0 6px;
+  text-wrap: balance;
+}
+.dek { font-size: 14.5px; line-height: 1.6; color: var(--muted); max-width: 62ch; }
+
+h2 {
+  font-family: 'Archivo Black', sans-serif;
+  font-weight: 400;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  margin: 38px 0 3px;
+  display: flex; align-items: baseline; gap: 10px;
+}
+h2 .tag {
+  font-family: 'Space Mono', monospace;
+  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--green-dark); background: var(--green-bg);
+  border: 1px solid var(--green); border-radius: 999px; padding: 2px 9px;
+}
+.section-note { font-size: 13px; color: var(--muted); margin: 0 0 14px; max-width: 64ch; line-height: 1.55; }
+
+/* --- Tables --- */
+.table-shell { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--white); }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; min-width: 560px; }
+th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th {
+  font-family: 'Space Mono', monospace; font-size: 10.5px; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--muted); background: var(--cream-2);
+}
+tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; white-space: nowrap; }
+td.item { font-weight: 600; }
+td.sub { color: var(--muted); font-size: 12px; margin-top: 2px; display: block; font-weight: 400; }
+tr.total td { border-top: 2px solid var(--ink); font-weight: 700; background: var(--green-bg); }
+tr.total td.num { color: var(--green-dark); }
+
+.status {
+  display: inline-block; font-size: 10px; font-family: 'Space Mono', monospace;
+  letter-spacing: 0.04em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid currentColor; white-space: nowrap;
+}
+.status.required { color: var(--coral); background: var(--coral-bg); }
+.status.recommended { color: var(--amber); background: var(--amber-bg); }
+.status.free { color: var(--green-dark); background: var(--green-bg); }
+.status.done { color: var(--green-dark); background: var(--green-bg); }
+.status.test { color: var(--amber); background: var(--amber-bg); }
+
+/* --- Phase list (rollout plan) --- */
+.phases { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
+.phase {
+  display: grid; grid-template-columns: 84px 1fr; gap: 16px;
+  padding: 14px 0; border-bottom: 1px solid var(--line);
+}
+.phase:last-child { border-bottom: none; }
+.phase-label {
+  font-family: 'Space Mono', monospace; font-size: 11px; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--green-dark); padding-top: 1px;
+}
+.phase-label.pending { color: var(--muted); }
+.phase-body b { display: block; font-size: 13.5px; margin-bottom: 2px; }
+.phase-body p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.55; }
+
+/* --- Callout --- */
+.callout {
+  margin: 14px 0 0;
+  padding: 16px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--amber);
+  background: var(--amber-bg);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.callout b.kicker {
+  font-family: 'Space Mono', monospace; font-size: 10.5px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--amber); display: block; margin-bottom: 8px;
+}
+.callout ul { margin: 0; padding-left: 18px; }
+.callout li { margin: 4px 0; }
+.callout li b { color: var(--ink); }
+
+.callout.warn { border-color: var(--coral); background: var(--coral-bg); }
+.callout.warn b.kicker { color: var(--coral); }
+
+.list-plain { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.7; }
+.list-plain li b { color: var(--ink); }
+
+.formula {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--cream-2);
+  border: 1px solid var(--line);
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+}
+
+footer {
+  margin-top: 46px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+</style>
+
+<div class="sheet">
+
+  <div class="letterhead">
+    <div class="brand">
+      <div class="brand-mark">T</div>
+      <div>
+        <div class="brand-name">DISPATCH STATION</div>
+        <div class="brand-sub">AI weighing scale rollout — internal cost forecast</div>
+      </div>
+    </div>
+    <div class="doc-meta">
+      <div><b>Prepared by</b> Dilshan</div>
+      <div><b>Date</b> 13 September 2026</div>
+      <div><b>Basis</b> pilot build, BBT — Om Al Hayman</div>
+    </div>
+  </div>
+
+  <h1>Cost forecast for the AI weighing scale dispatch station setup</h1>
+  <p class="dek">
+    What's already been spent on the pilot, what one more dispatch station costs to replicate, and
+    what a full rollout across BBT's branches would add plus the plan for getting there.
+  </p>
+
+  <h2>Already purchased <span class="tag">pilot, sunk cost</span></h2>
+  <p class="section-note">
+    Only the scale itself was actually bought for this project. The tablet and OTG adapter
+    currently running the pilot are temporary units used for testing, not dedicated
+    purchases so they're listed separately below as still needed, not sunk cost.
+  </p>
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr><th>Item</th><th class="num">Cost</th><th class="num">≈ KD</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="item">Mettler Toledo Ariva scale, 15kg × 2/5g
+            <span class="sub">+ cables + freight — quotation S16704</span>
+          </td>
+          <td class="num mono">4,960.00 SR</td>
+          <td class="num mono">≈ 407.216</td>
+          <td><span class="status done">owned</span></td>
+        </tr>
+        <tr class="total">
+          <td>Spent so far</td>
+          <td></td>
+          <td class="num mono">≈ 407.216 KD</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Still needed to make the pilot station permanent</h2>
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr><th>Item</th><th class="num">≈ KD</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="item">USB OTG adapter
+            <span class="sub">currently: a test unit, not yet purchased</span>
+          </td>
+          <td class="num mono">3.000</td>
+          <td><span class="status test">test unit</span></td>
+        </tr>
+        <tr>
+          <td class="item">Tablet
+            <span class="sub">currently: a test unit, not yet purchased</span>
+          </td>
+          <td class="num mono">25.000</td>
+          <td><span class="status test">test unit</span></td>
+        </tr>
+        <tr class="total">
+          <td>To complete the pilot station</td>
+          <td class="num mono">≈ 28.000 KD</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Per additional dispatch station <span class="tag">repeats per station</span></h2>
+  <p class="section-note">
+    Scaled to however many stations the rollout covers 
+  </p>
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr><th>Item</th><th class="num">Cost</th><th class="num">≈ KD</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="item">Mettler Toledo Ariva scale, 15kg × 2/5g
+            <span class="sub">+ USB cable, RJ→RS232 cable, freight Riyadh → Ardiya — quotation S16704</span>
+          </td>
+          <td class="num mono">4,960.00 SR</td>
+          <td class="num mono">≈ 407.216</td>
+        </tr>
+        <tr>
+          <td class="item">USB OTG adapter
+            <span class="sub">tablet ↔ scale cable connection</span>
+          </td>
+          <td class="num mono">—</td>
+          <td class="num mono">3.000</td>
+        </tr>
+        <tr>
+          <td class="item">Android tablet
+            <span class="sub">dispatch station unit</span>
+          </td>
+          <td class="num mono">—</td>
+          <td class="num mono">25.000</td>
+        </tr>
+        <tr class="total">
+          <td>Per station</td>
+          <td></td>
+          <td class="num mono">≈ 435.216 KD</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+
+  <h2>Full rollout, if the pilot succeeds <span class="tag">BBT, all branches</span></h2>
+  <p class="section-note">
+    The rollout is planned for <b>15 branches</b> total, one of which (Om Al Hayman) already
+    has its station. That leaves <b>14</b> to equip for a full rollout.
+  </p>
+  <div class="table-shell">
+    <table>
+      <thead>
+        <tr><th>Scope</th><th class="num">Stations</th><th class="num">≈ Cost</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="item">Additional stations needed
+            <span class="sub">14 branches × 435.216 KD</span>
+          </td>
+          <td class="num mono">14</td>
+          <td class="num mono">≈ 6,093.024 KD</td>
+        </tr>
+        <tr>
+          <td class="item">Finish the pilot station
+            <span class="sub">its own tablet + OTG adapter, replacing the current test units</span>
+          </td>
+          <td class="num mono">—</td>
+          <td class="num mono">≈ 28.000 KD</td>
+        </tr>
+        <tr>
+          <td class="item">One-time setup
+            <span class="sub">domain/hosting — likely already covered by the pilot's own deployment</span>
+          </td>
+          <td class="num mono">—</td>
+          <td class="num mono">≈ 0–5 KD</td>
+        </tr>
+        <tr class="total">
+          <td>New spend to cover all 15 branches</td>
+          <td></td>
+          <td class="num mono">≈ 6,121–6,126 KD</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="section-note" style="margin-top:10px;">
+    Total investment across the whole rollout, pilot's scale included:
+    <b class="mono">≈ 6,528.24 KD</b> (407.216 already spent + ≈ 6,121–6,126 new).
+  </p>
+
+
+  <h2>Rollout plan</h2>
+
+  <ul class="phases">
+    <li class="phase">
+      <div class="phase-label">On Track</div>
+      <div class="phase-body">
+        <b>Pilot hardware + software live at Om Al Hayman</b>
+        <p>Scale, tablet, and the full weighing/AI stack tested on site.</p>
+      </div>
+    </li>
+    <li class="phase">
+      <div class="phase-label">In progress</div>
+      <div class="phase-body">
+        <b>Fix the item-weight data</b>
+      </div>
+    </li>
+    <li class="phase">
+      <div class="phase-label pending">Then</div>
+      <div class="phase-body">
+        <b>Full BBT rollout — remaining branches</b>
+      </div>
+    </li>
+    <li class="phase">
+      <div class="phase-label pending">Later</div>
+      <div class="phase-body">
+        <b>Other SWiSH brands</b>
+      </div>
+    </li>
+  </ul>
+
+</div>
