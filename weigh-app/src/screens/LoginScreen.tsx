@@ -64,7 +64,7 @@ export function LoginScreen({ notice }: { notice?: string }) {
     <div className="flex min-h-dvh items-center justify-center p-5">
       <div className="w-full max-w-md">
         <div className="mb-6 text-center">
-          <div className="font-display text-5xl tracking-tight text-cream">TARE.</div>
+          <div className="font-display text-5xl tracking-tight text-cream">MENU ITEM WEIGHTS</div>
           <div className="mt-1 text-sm font-bold uppercase tracking-[0.18em] text-cream/85">Item weighing · BBT</div>
         </div>
         <form
